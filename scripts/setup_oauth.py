@@ -4,6 +4,15 @@ Interactive OAuth setup script
 交互式OAuth设置脚本
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - sys, argparse, pathlib.Path, importlib.util
+# OUTPUT: 对外提供 - main函数(命令行入口)
+# POSITION: 系统地位 - [Scripts/Setup Layer] - OAuth交互式设置脚本,引导用户完成OAuth认证配置
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import sys
 import argparse
 from pathlib import Path

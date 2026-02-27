@@ -2,6 +2,15 @@
 Configuration for data sources (papers, financial data, etc.).
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing.Dict/List/Any
+# OUTPUT: 对外提供 - ARXIV_CONFIG/SSRN_CONFIG/FINANCIAL_DATA_CONFIG等配置字典, get_enabled_paper_sources/get_enabled_financial_sources函数
+# POSITION: 系统地位 - [Config/Data Layer] - 数据源配置中心,定义arXiv/Yahoo Finance/Alpha Vantage等数据源参数
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import Dict, List, Any
 
 

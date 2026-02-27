@@ -7,6 +7,15 @@ Extends ResearchDatabase with methods for:
 - Analysis caching
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - json, typing, datetime, sqlite3
+# OUTPUT: 对外提供 - DocumentMemoryExtensions类(Mixin)
+# POSITION: 系统地位 - [Core/Persistence Layer] - 数据库扩展,添加领域管理/论文分类/分析缓存功能
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime

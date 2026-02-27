@@ -5,6 +5,15 @@ Records discoveries, issues, and improvements from each iteration,
 enabling agents to learn and improve over time.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing, datetime, core.database.get_database, anthropic.Anthropic, json
+# OUTPUT: 对外提供 - IterationMemory类, IterationAnalyzer类
+# POSITION: 系统地位 - [Core/Memory Layer] - 迭代记忆系统,记录发现/问题/改进建议,支持跨迭代学习
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from core.database import get_database

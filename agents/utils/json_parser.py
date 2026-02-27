@@ -4,6 +4,18 @@ JSON parsing utilities
 Provides robust JSON extraction and parsing from LLM responses.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - json (JSON解析), re (正则表达式),
+#                   typing (类型系统), logging (日志)
+# OUTPUT: 对外提供 - extract_json()函数,从LLM响应文本中提取JSON,
+#                   支持多种格式(代码块、原始JSON等)
+# POSITION: 系统地位 - Agent/Utils (智能体层-工具)
+#                     LLM输出解析工具,被所有Agent使用
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import json
 import re
 from typing import Dict, Any, Optional

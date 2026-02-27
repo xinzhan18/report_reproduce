@@ -2,6 +2,19 @@
 Financial data fetching utilities using yfinance and other sources.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - yfinance (Yahoo Finance数据), pandas (数据处理),
+#                   typing (类型系统), datetime (时间处理),
+#                   config/data_sources (金融数据源配置)
+# OUTPUT: 对外提供 - FinancialDataFetcher类,提供fetch_data()方法,
+#                   获取股票/指数历史数据
+# POSITION: 系统地位 - Tool/Fetcher (工具层-数据获取)
+#                     ExperimentAgent的核心依赖,提供回测所需金融数据
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import yfinance as yf
 import pandas as pd
 from typing import List, Optional, Dict, Any

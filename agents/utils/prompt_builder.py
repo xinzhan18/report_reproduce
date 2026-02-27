@@ -4,6 +4,17 @@ PromptBuilder - Utilities for building structured prompts
 Provides templates and builders for common prompt patterns.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing (类型系统)
+# OUTPUT: 对外提供 - PromptBuilder类,提供build_ranking_prompt()等方法,
+#                   构建结构化的Prompt模板
+# POSITION: 系统地位 - Agent/Utils (智能体层-工具)
+#                     Prompt构建工具,简化Agent的Prompt生成
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import List, Dict, Any
 
 

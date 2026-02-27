@@ -3,6 +3,15 @@ Initialize agent memory system - Generate all persona and memory files
 初始化agent记忆系统 - 生成所有persona和记忆文件
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - sys, importlib.util, pathlib.Path
+# OUTPUT: 对外提供 - initialize_all_agents函数, main函数(命令行入口)
+# POSITION: 系统地位 - [Scripts/Initialization Layer] - Agent记忆初始化脚本,为所有Agent生成persona/memory/mistakes文件
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import sys
 import importlib.util
 from pathlib import Path

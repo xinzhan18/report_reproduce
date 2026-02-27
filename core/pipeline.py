@@ -4,6 +4,22 @@ LangGraph pipeline orchestration for research automation.
 Connects all four agents in a workflow with error handling and checkpointing.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - langgraph (Pipeline框架), typing (类型系统),
+#                   core/state (ResearchState状态定义),
+#                   agents (四个Agent类),
+#                   tools (PaperFetcher, FileManager, DataFetcher, BacktestEngine),
+#                   config/llm_config (LLM客户端),
+#                   core/persistence (Checkpointer)
+# OUTPUT: 对外提供 - create_research_pipeline()函数,返回LangGraph编排器,
+#                   should_retry_experiment()条件路由函数
+# POSITION: 系统地位 - Core/Pipeline (核心层-编排器)
+#                     系统的控制流中枢,编排四个Agent的执行顺序
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 from core.state import ResearchState, create_initial_state

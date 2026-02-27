@@ -3,6 +3,15 @@ Agent Memory Manager - Markdown-based memory system
 管理persona.md, memory.md, daily/*.md, mistakes.md
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - Path (pathlib), datetime, typing.Dict/List/Optional
+# OUTPUT: 对外提供 - AgentMemoryManager类, get_agent_memory_manager函数
+# POSITION: 系统地位 - [Core/Memory Layer] - Agent记忆管理器,管理Markdown记忆系统(persona/memory/daily/mistakes)
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional

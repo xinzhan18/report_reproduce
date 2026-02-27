@@ -5,6 +5,15 @@ Intelligent system for accessing academic literature with multiple fallback stra
 Handles paywalls, access restrictions, and finds alternative sources automatically.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing, pathlib.Path, requests, core.database.get_database, time, json
+# OUTPUT: 对外提供 - LiteratureAccessManager类, get_literature_access_manager函数
+# POSITION: 系统地位 - [Tools/Access Layer] - 智能文献访问管理器,多策略论文获取(arXiv/OpenAccess/Institutional/Sci-Hub)
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import Optional, Dict, Any, List, Tuple
 from pathlib import Path
 import requests

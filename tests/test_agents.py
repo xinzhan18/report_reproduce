@@ -2,6 +2,15 @@
 Unit tests for agents.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - pytest, unittest.mock, core.state, agents.*
+# OUTPUT: 对外提供 - 测试函数集(test_ideation_agent_*/test_planning_agent_*/test_experiment_agent_*/test_writing_agent_*)
+# POSITION: 系统地位 - [Tests/Unit Tests] - Agent单元测试,验证四个Agent的核心功能
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import pytest
 from unittest.mock import Mock, MagicMock
 from core.state import create_initial_state

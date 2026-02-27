@@ -5,6 +5,15 @@ Scans arXiv daily for new papers in quantitative finance and related fields,
 and triggers research pipelines for promising topics.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - schedule, time, datetime, typing, tools.paper_fetcher, scheduler.pipeline_runner, config.agent_config, logging
+# OUTPUT: 对外提供 - DailyScanner类
+# POSITION: 系统地位 - [Scheduler/Automation Layer] - 每日论文扫描器,定时扫描arXiv并自动触发研究Pipeline
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import schedule
 import time
 from datetime import datetime

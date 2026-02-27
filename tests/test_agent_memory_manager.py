@@ -2,6 +2,15 @@
 Tests for AgentMemoryManager - Markdown-based memory system
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - pytest, sys, importlib.util, pathlib.Path, datetime, shutil
+# OUTPUT: 对外提供 - 测试函数集(test_memory_manager_*/test_persona_*/test_daily_log_*等)
+# POSITION: 系统地位 - [Tests/Unit Tests] - Agent记忆管理器测试,验证Markdown记忆系统的存储和检索
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import pytest
 import sys
 import importlib.util

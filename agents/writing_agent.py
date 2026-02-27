@@ -8,6 +8,24 @@ Responsible for:
 - Creating comprehensive documentation
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing (类型系统), anthropic (Anthropic客户端),
+#                   core/state (ResearchState状态),
+#                   tools/file_manager (文件管理),
+#                   config/agent_config (Agent配置),
+#                   config/llm_config (模型名称),
+#                   core/agent_memory_manager (记忆管理),
+#                   core/knowledge_graph (知识图谱),
+#                   datetime (时间戳)
+# OUTPUT: 对外提供 - WritingAgent类,实现execute()方法,
+#                   输出完整研究报告(Markdown格式)
+# POSITION: 系统地位 - Agent/Writing (智能体层-写作智能体)
+#                     Pipeline第四阶段,整合所有结果生成最终报告
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import Dict, Any
 from anthropic import Anthropic
 from core.state import ResearchState

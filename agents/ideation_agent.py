@@ -1,5 +1,8 @@
 """
-Ideation Agent - Literature review and hypothesis generation.
+Ideation Agent - Literature review and hypothesis generation (REFACTORED)
+
+Refactored to inherit from BaseAgent, eliminating infrastructure duplication.
+Now focuses purely on business logic.
 
 Responsible for:
 - Scanning and fetching papers from arXiv and other sources
@@ -8,27 +11,45 @@ Responsible for:
 - Generating testable hypotheses
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing (类型系统), anthropic (Anthropic客户端),
+#                   agents/base_agent (BaseAgent基类),
+#                   core/state (ResearchState, PaperMetadata),
+#                   tools/paper_fetcher (PaperFetcher文献获取),
+#                   tools/file_manager (FileManager文件管理),
+#                   tools/smart_literature_access (文献智能访问)
+# OUTPUT: 对外提供 - IdeationAgent类,实现_execute()方法,
+#                   输出文献分析、研究差距、假设生成结果
+# POSITION: 系统地位 - Agent/Ideation (智能体层-文献智能体)
+#                     Pipeline第一阶段,负责文献扫描和研究方向生成
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import List, Dict
 from anthropic import Anthropic
+
+from agents.base_agent import BaseAgent
 from core.state import ResearchState, PaperMetadata
 from tools.paper_fetcher import PaperFetcher
 from tools.file_manager import FileManager
-from config.agent_config import get_agent_config
-from config.llm_config import get_model_name
-from core.agent_memory_manager import get_agent_memory_manager
-from core.knowledge_graph import get_knowledge_graph
 from tools.smart_literature_access import get_literature_access_manager
-import json
 
 
-class IdeationAgent:
+class IdeationAgent(BaseAgent):
     """
     Agent responsible for literature review and idea generation.
-    Enhanced with persona, self-reflection, and knowledge graph capabilities.
+
+    Refactored to use BaseAgent for infrastructure.
+    All memory, LLM calling, and output management handled by base class.
     """
 
     def __init__(
-        self, llm: Anthropic, paper_fetcher: PaperFetcher, file_manager: FileManager
+        self,
+        llm: Anthropic,
+        paper_fetcher: PaperFetcher,
+        file_manager: FileManager
     ):
         """
         Initialize Ideation Agent.
@@ -38,57 +59,18 @@ class IdeationAgent:
             paper_fetcher: PaperFetcher instance for retrieving papers
             file_manager: FileManager instance for file operations
         """
-        self.llm = llm
-        self.paper_fetcher = paper_fetcher
-        self.file_manager = file_manager
-        self.config = get_agent_config("ideation")
-        self.model = get_model_name(self.config.get("model", "sonnet"))
+        # Initialize base agent (handles memory, LLM service, output manager)
+        super().__init__(llm, file_manager, agent_name="ideation")
 
-        # Initialize agent intelligence components (NEW: Markdown-based memory system)
-        self.memory_manager = get_agent_memory_manager("ideation")
-        self.knowledge_graph = get_knowledge_graph()
+        # Agent-specific tools
+        self.paper_fetcher = paper_fetcher
         self.literature_access = get_literature_access_manager()
 
-    def _build_system_prompt(self, memories: Dict[str, str]) -> str:
+    def _execute(self, state: ResearchState) -> ResearchState:
         """
-        Build system prompt with persona and memory context.
+        Execute ideation agent workflow (business logic only).
 
-        Args:
-            memories: Dictionary containing persona, memory, mistakes, and daily logs
-
-        Returns:
-            Complete system prompt string
-        """
-        return f"""# Your Identity and Persona
-
-{memories['persona']}
-
----
-
-# Your Long-term Knowledge and Insights
-
-{memories['memory']}
-
----
-
-# Mistakes to Avoid (IMPORTANT - Review Before Each Task)
-
-{memories['mistakes']}
-
----
-
-# Recent Context (Last 3 Days of Work)
-
-{memories['daily_recent']}
-
----
-
-You are now executing a new task. Use your persona, knowledge, and past learnings to perform at your best. Avoid repeating past mistakes.
-"""
-
-    def __call__(self, state: ResearchState) -> ResearchState:
-        """
-        Execute ideation agent workflow.
+        All infrastructure (memory loading, logging, etc.) handled by BaseAgent.
 
         Args:
             state: Current research state
@@ -96,46 +78,35 @@ You are now executing a new task. Use your persona, knowledge, and past learning
         Returns:
             Updated research state with ideation outputs
         """
-        print(f"\n{'='*60}")
-        print("Ideation Agent: Starting literature review")
-        print(f"Research direction: {state['research_direction']}")
-        print(f"{'='*60}\n")
-
-        # Update status
-        state["status"] = "ideation"
-
-        # Load all memories (persona, memory, mistakes, daily logs)
-        print("🧠 Loading agent memories...")
-        self.memories = self.memory_manager.load_all_memories()
-        self.system_prompt = self._build_system_prompt(self.memories)
-        print(
-            "✓ Loaded persona, long-term memory, mistakes registry, and recent daily logs"
-        )
+        self.logger.info(f"Research direction: {state['research_direction']}")
 
         # Consult knowledge graph for related concepts
-        related_knowledge = self.knowledge_graph.search_knowledge(
-            query=state["research_direction"], node_type=None
+        related_knowledge = self.intelligence.knowledge_graph.search_knowledge(
+            query=state["research_direction"],
+            node_type=None
         )
 
         if related_knowledge:
-            print(
+            self.logger.info(
                 f"✓ Found {len(related_knowledge)} related concepts in knowledge graph"
             )
             for knowledge in related_knowledge[:3]:
-                print(f"  - {knowledge['name']}: {knowledge['description'][:80]}...")
+                self.logger.info(
+                    f"  - {knowledge['name']}: {knowledge['description'][:80]}..."
+                )
 
         # Step 1: Scan and fetch papers
         papers = self.scan_papers(state["research_direction"])
         state["papers_reviewed"] = papers
-
-        print(f"✓ Found {len(papers)} relevant papers")
+        self.logger.info(f"✓ Found {len(papers)} relevant papers")
 
         # Save papers to project
-        self.file_manager.save_json(
-            data={"papers": papers},
+        self.save_artifact(
+            content={"papers": papers},
             project_id=state["project_id"],
             filename="papers_analyzed.json",
             subdir="literature",
+            format="json"
         )
 
         # Step 2: Analyze literature
@@ -143,46 +114,72 @@ You are now executing a new task. Use your persona, knowledge, and past learning
             papers, state["research_direction"]
         )
         state["literature_summary"] = literature_summary
-
-        print("✓ Completed literature analysis")
+        self.logger.info("✓ Completed literature analysis")
 
         # Save literature summary
-        self.file_manager.save_text(
+        self.save_artifact(
             content=literature_summary,
             project_id=state["project_id"],
             filename="literature_summary.md",
             subdir="literature",
+            format="markdown"
         )
 
         # Step 3: Identify research gaps
         research_gaps = self.identify_research_gaps(literature_summary, papers)
         state["research_gaps"] = research_gaps
-
-        print(f"✓ Identified {len(research_gaps)} research gaps")
+        self.logger.info(f"✓ Identified {len(research_gaps)} research gaps")
 
         # Step 4: Generate hypothesis
         hypothesis = self.generate_hypothesis(
             research_gaps, literature_summary, state["research_direction"]
         )
         state["hypothesis"] = hypothesis
-
-        print("✓ Generated research hypothesis")
-        print(f"\nHypothesis: {hypothesis[:200]}...")
+        self.logger.info("✓ Generated research hypothesis")
+        self.logger.info(f"Hypothesis: {hypothesis[:200]}...")
 
         # Save hypothesis
-        self.file_manager.save_text(
-            content=f"# Research Hypothesis\n\n{hypothesis}\n\n## Research Gaps\n\n"
-            + "\n".join(f"- {gap}" for gap in research_gaps),
+        hypothesis_content = (
+            f"# Research Hypothesis\n\n{hypothesis}\n\n"
+            f"## Research Gaps\n\n" +
+            "\n".join(f"- {gap}" for gap in research_gaps)
+        )
+        self.save_artifact(
+            content=hypothesis_content,
             project_id=state["project_id"],
             filename="hypothesis.md",
             subdir="literature",
+            format="markdown"
         )
 
-        print(f"\n{'='*60}")
-        print("Ideation Agent: Completed")
-        print(f"{'='*60}\n")
+        # Update knowledge graph with new insights
+        if research_gaps:
+            findings = [f"Research gap: {gap}" for gap in research_gaps[:3]]
+            self.intelligence.knowledge_graph.update_knowledge_from_research(
+                project_id=state["project_id"],
+                findings=findings,
+                llm=self.llm
+            )
 
-        # Save daily log with execution details
+        return state
+
+    def _generate_execution_summary(self, state: ResearchState) -> Dict:
+        """
+        Generate execution summary for daily log.
+
+        Overrides base class to provide agent-specific summary.
+
+        Args:
+            state: Current research state
+
+        Returns:
+            Execution summary dict
+        """
+        papers = state.get("papers_reviewed", [])
+        research_gaps = state.get("research_gaps", [])
+        hypothesis = state.get("hypothesis", "")
+        literature_summary = state.get("literature_summary", "")
+
         execution_log = f"""## Literature Review Execution
 
 ### Papers Scanned
@@ -206,10 +203,7 @@ You are now executing a new task. Use your persona, knowledge, and past learning
             f"Identified {len(research_gaps)} distinct research gaps",
         ]
 
-        mistakes_encountered = []  # Track if any issues occurred
-
-        reflection_text = f"""
-## Reflection on Execution
+        reflection_text = f"""## Reflection on Execution
 
 ### What Went Well
 - Literature scan successfully retrieved {len(papers)} relevant papers
@@ -221,24 +215,12 @@ You are now executing a new task. Use your persona, knowledge, and past learning
 - Validate hypothesis testability with Planning Agent
 """
 
-        self.memory_manager.save_daily_log(
-            project_id=state["project_id"],
-            execution_log=execution_log,
-            learnings=learnings,
-            mistakes=mistakes_encountered,
-            reflection=reflection_text,
-        )
-
-        print("✓ Daily log saved with execution details and learnings")
-
-        # Update knowledge graph with new insights
-        if research_gaps:
-            findings = [f"Research gap: {gap}" for gap in research_gaps[:3]]
-            self.knowledge_graph.update_knowledge_from_research(
-                project_id=state["project_id"], findings=findings, llm=self.llm
-            )
-
-        return state
+        return {
+            "log": execution_log,
+            "learnings": learnings,
+            "mistakes": [],
+            "reflection": reflection_text
+        }
 
     def scan_papers(self, research_direction: str) -> List[PaperMetadata]:
         """
@@ -307,7 +289,7 @@ You are now executing a new task. Use your persona, knowledge, and past learning
 
         papers_text = "\n".join(paper_texts)
 
-        # Create analysis prompt (task-specific, persona is in system prompt)
+        # Create analysis prompt (use LLMService)
         prompt = f"""Analyze the following recent papers related to "{research_direction}" and provide a comprehensive literature review.
 
 Papers to analyze:
@@ -322,15 +304,13 @@ Please provide:
 
 Write a detailed literature review (800-1000 words) that synthesizes these papers."""
 
-        response = self.llm.messages.create(
-            model=self.model,
+        # Use BaseAgent's call_llm method
+        return self.call_llm(
+            prompt=prompt,
+            model=self.config.get("model", "sonnet"),
             max_tokens=4000,
-            temperature=self.config.get("temperature", 0.7),
-            system=self.system_prompt,
-            messages=[{"role": "user", "content": prompt}],
+            temperature=self.config.get("temperature", 0.7)
         )
-
-        return response.content[0].text
 
     def identify_research_gaps(
         self, literature_summary: str, papers: List[PaperMetadata]
@@ -359,36 +339,36 @@ Format each gap as a single paragraph (2-3 sentences).
 
 Output as JSON array of strings."""
 
-        response = self.llm.messages.create(
-            model=self.model,
-            max_tokens=2000,
-            temperature=self.config.get("temperature", 0.7),
-            system=self.system_prompt,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        # Parse response
-        content = response.content[0].text
-
+        # Use BaseAgent's call_llm with JSON format
         try:
-            # Try to extract JSON
-            if "```json" in content:
-                json_str = content.split("```json")[1].split("```")[0].strip()
-            elif "[" in content and "]" in content:
-                json_str = content[content.find("[") : content.rfind("]") + 1]
-            else:
-                json_str = content
+            response = self.call_llm(
+                prompt=prompt,
+                model=self.config.get("model", "sonnet"),
+                max_tokens=2000,
+                temperature=self.config.get("temperature", 0.7),
+                response_format="json"
+            )
 
-            gaps = json.loads(json_str)
+            # Extract gaps array
+            if isinstance(response, dict):
+                return response if isinstance(response, list) else []
+            elif isinstance(response, list):
+                return response
+            return []
 
-            if isinstance(gaps, list):
-                return gaps
-        except:
-            pass
+        except Exception as e:
+            self.logger.warning(f"JSON parsing failed, using text fallback: {e}")
+            # Fallback: call as text and parse manually
+            text_response = self.call_llm(
+                prompt=prompt,
+                model=self.config.get("model", "sonnet"),
+                max_tokens=2000,
+                temperature=self.config.get("temperature", 0.7)
+            )
 
-        # Fallback: split by newlines
-        lines = [line.strip() for line in content.split("\n") if line.strip()]
-        return [line for line in lines if len(line) > 50][:7]
+            # Split by newlines
+            lines = [line.strip() for line in text_response.split("\n") if line.strip()]
+            return [line for line in lines if len(line) > 50][:7]
 
     def generate_hypothesis(
         self, research_gaps: List[str], literature_summary: str, research_direction: str
@@ -432,12 +412,10 @@ Format your response as:
 
 **Testability**: [How this can be validated through backtesting]"""
 
-        response = self.llm.messages.create(
-            model=self.model,
+        # Use BaseAgent's call_llm
+        return self.call_llm(
+            prompt=prompt,
+            model=self.config.get("model", "sonnet"),
             max_tokens=2000,
-            temperature=self.config.get("temperature", 0.7),
-            system=self.system_prompt,
-            messages=[{"role": "user", "content": prompt}],
+            temperature=self.config.get("temperature", 0.7)
         )
-
-        return response.content[0].text

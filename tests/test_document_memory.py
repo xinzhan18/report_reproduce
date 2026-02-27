@@ -4,6 +4,15 @@ Tests for DocumentMemoryManager
 Tests document memory retrieval, caching, and recommendations.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - pytest, unittest.mock, core.document_memory_manager, core.state.PaperMetadata
+# OUTPUT: 对外提供 - 测试函数集(test_retrieve_by_domain/test_suggest_next_papers等)
+# POSITION: 系统地位 - [Tests/Unit Tests] - 文档记忆管理器测试,验证论文检索/缓存/推荐功能
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from core.document_memory_manager import DocumentMemoryManager

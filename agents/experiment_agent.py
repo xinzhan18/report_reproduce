@@ -8,6 +8,24 @@ Responsible for:
 - Handling execution errors
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing (类型系统), anthropic (Anthropic客户端),
+#                   core/state (ResearchState, BacktestResults, ExperimentPlan),
+#                   tools/file_manager (文件管理),
+#                   tools/data_fetcher (金融数据获取),
+#                   tools/backtest_engine (回测引擎),
+#                   config/agent_config (Agent配置),
+#                   core/agent_memory_manager (记忆管理),
+#                   pandas (数据处理)
+# OUTPUT: 对外提供 - ExperimentAgent类,实现execute()方法,
+#                   输出策略代码、回测结果、性能指标
+# POSITION: 系统地位 - Agent/Experiment (智能体层-实验智能体)
+#                     Pipeline第三阶段,执行策略代码生成和回测
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import Dict, Any, Optional
 from anthropic import Anthropic
 from core.state import ResearchState, BacktestResults, ExperimentPlan

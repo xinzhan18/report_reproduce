@@ -9,6 +9,23 @@ Responsible for:
 - Assessing feasibility
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing (类型系统), anthropic (Anthropic客户端),
+#                   core/state (ResearchState, ExperimentPlan),
+#                   tools/file_manager (FileManager文件管理),
+#                   config/agent_config (Agent配置),
+#                   config/llm_config (模型名称),
+#                   core/agent_memory_manager (记忆管理),
+#                   core/knowledge_graph (知识图谱)
+# OUTPUT: 对外提供 - PlanningAgent类,实现execute()方法,
+#                   输出实验计划、方法论设计、数据需求
+# POSITION: 系统地位 - Agent/Planning (智能体层-规划智能体)
+#                     Pipeline第二阶段,将假设转化为可执行实验计划
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import Dict, Any
 from anthropic import Anthropic
 from core.state import ResearchState, ExperimentPlan

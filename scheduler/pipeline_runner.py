@@ -2,6 +2,15 @@
 Pipeline execution manager for running and monitoring research projects.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing, pathlib.Path, json, datetime, core.pipeline, core.state, core.persistence, tools.file_manager, time
+# OUTPUT: 对外提供 - PipelineRunner类
+# POSITION: 系统地位 - [Scheduler/Execution Layer] - Pipeline执行器,管理研究项目的启动/监控/恢复/并发控制
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 import json

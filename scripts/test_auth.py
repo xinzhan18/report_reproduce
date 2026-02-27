@@ -4,6 +4,15 @@ Test authentication configuration
 测试认证配置
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - sys, os, pathlib.Path, importlib.util
+# OUTPUT: 对外提供 - test_api_key_auth/test_oauth_auth函数, main函数(命令行入口)
+# POSITION: 系统地位 - [Scripts/Testing Layer] - 认证测试脚本,验证API Key和OAuth配置是否正确
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import sys
 import os
 from pathlib import Path

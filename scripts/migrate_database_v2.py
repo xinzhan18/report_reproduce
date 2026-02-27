@@ -10,6 +10,15 @@ Usage:
     python scripts/migrate_database_v2.py
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - sqlite3, pathlib.Path, sys
+# OUTPUT: 对外提供 - migrate_database函数, main函数(命令行入口)
+# POSITION: 系统地位 - [Scripts/Migration Layer] - 数据库迁移脚本,升级database schema到v2版本(添加文档记忆系统表)
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import sqlite3
 from pathlib import Path
 import sys

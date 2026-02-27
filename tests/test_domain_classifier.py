@@ -4,6 +4,15 @@ Tests for DomainClassifier
 Tests paper classification into domain taxonomy.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - pytest, unittest.mock, tools.domain_classifier.DomainClassifier, core.state.PaperMetadata
+# OUTPUT: 对外提供 - 测试函数集(test_keyword_classification/test_llm_classification/test_hybrid等)
+# POSITION: 系统地位 - [Tests/Unit Tests] - 领域分类器测试,验证关键词/LLM/混合三种分类方法
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from tools.domain_classifier import DomainClassifier

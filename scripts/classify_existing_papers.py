@@ -11,6 +11,15 @@ Options:
     --limit: Maximum papers to classify (0 = all) [default: 0]
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - sys, argparse, pathlib.Path, core.database, tools.domain_classifier, anthropic.Anthropic, os, dotenv
+# OUTPUT: 对外提供 - classify_existing_papers函数, main函数(命令行入口)
+# POSITION: 系统地位 - [Scripts/Batch Processing Layer] - 批量论文分类脚本,对数据库中所有论文进行领域分类
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import sys
 import argparse
 from pathlib import Path

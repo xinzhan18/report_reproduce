@@ -8,270 +8,131 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 This system automates quantitative finance research from literature review through experiment execution to report generation using four specialized AI agents working in a pipeline.
 
-## System Architecture
-
-### Core Components
-
-1. **Four Specialized Agents** (`agents/`)
-   - **IdeationAgent**: Literature scanning, gap analysis, hypothesis generation
-   - **PlanningAgent**: Experiment design and methodology planning
-   - **ExperimentAgent**: Strategy code generation and backtest execution
-   - **WritingAgent**: Research report generation and documentation
-
-2. **LangGraph Pipeline** (`core/pipeline.py`)
-   - Orchestrates agent workflow with state management
-   - Implements checkpointing and resume capability
-   - Conditional routing for error handling and retries
-
-3. **State Management** (`core/state.py`)
-   - `ResearchState`: TypedDict flowing through all agents
-   - Persistent checkpointing using SQLite (LangGraph)
-   - Tracks all outputs and metadata
-
-4. **Tools & Utilities** (`tools/`)
-   - `PaperFetcher`: arXiv API wrapper for academic papers
-   - `FinancialDataFetcher`: yfinance integration for market data
-   - `BacktestEngine`: Backtrader wrapper for strategy testing
-   - `FileManager`: File I/O and project organization
-
-5. **Scheduler & Automation** (`scheduler/`)
-   - `DailyScanner`: Automated paper scanning and research initiation
-   - `PipelineRunner`: Project execution and monitoring
-
-## Technology Stack
-
-- **Language**: Python 3.10+
-- **LLM Framework**: LangGraph + Anthropic SDK
-- **AI Models**: Claude 4.5 Sonnet (complex tasks), Claude 4.5 Haiku (simple tasks)
-- **Backtesting**: Backtrader
-- **Data Sources**: yfinance (Yahoo Finance), arXiv API
-- **Storage**: SQLite for checkpointing, JSON for outputs
-- **Testing**: pytest
-
-## Repository Structure
-
-```
-report_reproduce/
-├── agents/              # Four core agents
-├── config/              # Configuration files
-├── core/                # State management & pipeline
-├── tools/               # Utility tools
-├── scheduler/           # Automation & scheduling
-├── data/                # Data storage (literature, checkpoints)
-├── outputs/             # Research project outputs
-└── tests/               # Test suite
-```
-
-## Development Workflow
-
-### Running the System
-
-1. **Setup Environment**:
-```bash
-pip install -r requirements.txt
-cp .env.example .env
-# Add ANTHROPIC_API_KEY to .env
-```
-
-2. **Run a Research Project**:
-```bash
-python -m core.pipeline "momentum strategies in equity markets"
-```
-
-3. **Run Daily Scanner**:
-```bash
-python -m scheduler.daily_scan --mode once
-```
-
-### Adding New Features
-
-**Adding a New Agent**:
-1. Create class in `agents/` inheriting agent pattern
-2. Implement `__call__(state: ResearchState) -> ResearchState`
-3. Add node to pipeline in `core/pipeline.py`
-4. Update `config/agent_config.py` with settings
-
-**Adding Data Sources**:
-1. Extend `tools/data_fetcher.py` with new fetcher methods
-2. Update `config/data_sources.py` with API configs
-3. Add API key to `.env.example`
-
-**Adding Backtest Engines**:
-1. Create wrapper in `tools/` following `BacktestEngine` pattern
-2. Implement standardized result format (`BacktestResults`)
-3. Update `ExperimentAgent` to support new engine
-
-## Key Design Patterns
-
-### Agent Pattern
-All agents follow this structure:
-```python
-class Agent:
-    def __init__(self, llm, tools...):
-        self.llm = llm
-        self.config = get_agent_config("agent_name")
-
-    def __call__(self, state: ResearchState) -> ResearchState:
-        # 1. Update status
-        state["status"] = "agent_stage"
-
-        # 2. Process inputs
-        result = self.process(state)
-
-        # 3. Update state with outputs
-        state["output_field"] = result
-
-        # 4. Save artifacts to file system
-        self.file_manager.save_text(...)
-
-        return state
-```
-
-### State Flow
-```
-create_initial_state()
-  → IdeationAgent (papers, hypothesis)
-  → PlanningAgent (experiment_plan, methodology)
-  → ExperimentAgent (code, results)
-  → WritingAgent (report)
-  → completed
-```
-
-### Persistence
-- LangGraph SQLite checkpointer saves state after each agent
-- File system stores all artifacts in `outputs/{project_id}/`
-- Can resume any project from last checkpoint
-
-## Configuration
-
-### Agent Settings (`config/agent_config.py`)
-```python
-AGENT_CONFIG = {
-    "ideation": {
-        "model": "sonnet",
-        "temperature": 0.7,
-        "focus_categories": ["q-fin.RM", "q-fin.PM", ...],
-        "keywords": ["momentum", "mean reversion", ...]
-    },
-    # ... other agents
-}
-```
-
-### LLM Models (`config/llm_config.py`)
-- **Sonnet** (default): Complex reasoning, planning, code generation
-- **Haiku**: Simple tasks, cost optimization
-- **Opus**: Reserved for most challenging tasks (optional)
-
-## Testing
-
-Run tests:
-```bash
-# All tests
-pytest tests/
-
-# Specific tests
-pytest tests/test_agents.py
-pytest tests/test_pipeline.py
-
-# With coverage
-pytest --cov=. tests/
-```
-
-## Important Notes
-
-### API Usage
-- **Anthropic API**: Required for all agents (set `ANTHROPIC_API_KEY`)
-- **arXiv API**: Free, rate limited (1 req/sec)
-- **yfinance**: Free, conservative rate limiting implemented
-
-### Compute Requirements
-- **CPU-only**: No GPU required (quantitative backtesting, not ML training)
-- **Memory**: ~2GB for typical research project
-- **Storage**: ~100MB per project (papers, results, reports)
-
-### Limitations
-- **Domain**: Quantitative finance only (no general research yet)
-- **Data**: Public data sources only (Yahoo Finance)
-- **Review**: Human review required before publication
-- **Execution**: No live trading integration
-
-## Common Development Tasks
-
-### Debugging a Failed Pipeline
-```python
-from scheduler.pipeline_runner import PipelineRunner
-
-runner = PipelineRunner()
-# Resume from checkpoint to continue
-result = runner.resume_project("2026-02-27_project_id")
-```
-
-### Inspecting Project Outputs
-```
-outputs/{project_id}/
-├── literature/          # Papers, hypothesis
-├── experiments/         # Strategy code, results
-└── reports/             # Final report
-```
-
-### Modifying Prompts
-Agent prompts are in each agent's implementation:
-- `agents/ideation_agent.py`: Literature analysis prompts
-- `agents/planning_agent.py`: Experiment design prompts
-- `agents/experiment_agent.py`: Code generation prompts
-- `agents/writing_agent.py`: Report writing prompts
-
-### Adjusting Success Criteria
-Edit `config/agent_config.py`:
-```python
-"experiment": {
-    "validation_metrics": {
-        "min_sharpe_ratio": 0.5,
-        "min_trades": 10,
-        "max_drawdown_threshold": 0.5
-    }
-}
-```
-
-## Error Handling
-
-The pipeline includes:
-- **Retry Logic**: Failed experiments retry up to 2 times
-- **Conditional Routing**: Routes to error handler on failures
-- **Checkpointing**: Can resume from any point
-- **Logging**: All execution logs saved to project directory
-
-## Future Enhancements
-
-High-priority items:
-1. Multi-engine backtesting comparison
-2. Walk-forward optimization
-3. Portfolio-level strategies
-4. Real-time monitoring dashboard
-5. Background execution with multiprocessing
-
-## Contributing Guidelines
-
-1. Follow existing agent patterns
-2. Add tests for new functionality
-3. Update configuration files
-4. Document new features in README
-5. Maintain backward compatibility
-
-## Performance Considerations
-
-- **LLM Calls**: Each agent makes 2-5 API calls (optimize with caching if needed)
-- **Backtesting**: Typically 10-60 seconds for 5-10 years of daily data
-- **Full Pipeline**: 5-15 minutes per research project (end-to-end)
-- **Cost**: ~$0.50-2.00 per project (Claude API costs)
-
-## Security & Privacy
-
-- **API Keys**: Store in `.env`, never commit
-- **Data**: All project data stored locally
-- **Papers**: Cached locally, respect arXiv ToS
-- **Reports**: Not automatically published (human review required)
 
 ---
 
-**For questions or issues**: Review code comments, check test files, or consult the main README.md
+## 全局架构地图 (Global Architecture Map)
+
+### 五层架构设计
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 5: Scheduling & Automation (scheduler/)              │
+│   - DailyScanner, PipelineRunner                           │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 4: Pipeline Orchestration (core/pipeline.py)         │
+│   - LangGraph workflow, state routing                      │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 3: Agents (agents/)                                  │
+│   - IdeationAgent, PlanningAgent, ExperimentAgent,         │
+│     WritingAgent                                            │
+│   - Services: LLMService, IntelligenceContext,             │
+│     OutputManager                                           │
+│   - Utils: JSONParser, PromptBuilder                        │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 2: Intelligence & State (core/)                      │
+│   - State management, Memory system, Knowledge graph       │
+│   - AgentMemoryManager, DocumentMemoryManager              │
+│   - Database, SelfReflection, AgentPersona                 │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 1: Tools & Configuration (tools/, config/)           │
+│   - PaperFetcher, BacktestEngine, DataFetcher              │
+│   - LLM Config, Auth Config, Agent Config                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 数据流向 (Data Flow)
+
+```
+Scheduler → Pipeline → Agents → Tools → Data Storage
+    ↓          ↓         ↓        ↓         ↓
+  Config ← Core/State → Memory → Database → Outputs
+```
+
+### 模块目录清单
+
+每个模块都有独立的CLAUDE.md文档：
+
+- **agents/** - AI智能体层 (4个核心Agent + services + utils)
+- **config/** - 系统配置层 (LLM、认证、数据源配置)
+- **core/** - 核心基础设施层 (状态、Pipeline、记忆、数据库)
+- **tools/** - 工具库层 (数据获取、回测、文件管理)
+- **scheduler/** - 调度自动化层 (定时任务、执行器)
+- **tests/** - 测试套件层
+- **scripts/** - 运维脚本层
+- **docs/** - 项目文档
+- **outputs/** - 研究输出目录
+- **plans/** - 计划文档目录
+
+---
+
+## 强制回环检查规则 (Mandatory Loop-Back Check Rules)
+
+### 规则 1: 文件修改必须更新三级文档
+
+**任何代码修改后，必须按顺序检查和更新：**
+
+1. **文件头注释** (INPUT/OUTPUT/POSITION) - 更新依赖、输出、地位
+2. **所属文件夹的 CLAUDE.md** - 更新文件功能描述
+3. **根目录 CLAUDE.md** - 如果涉及模块间关系变化
+
+### 规则 2: 触发更新的场景
+
+**文件头注释更新场景:**
+- ✓ 添加/删除 import 语句 → 更新 INPUT
+- ✓ 修改函数/类的公开接口 → 更新 OUTPUT
+- ✓ 改变模块在系统中的职责 → 更新 POSITION
+
+**文件夹 CLAUDE.md 更新场景:**
+- ✓ 添加/删除文件 → 更新文件清单
+- ✓ 修改文件的核心功能 → 更新文件功能描述
+- ✓ 改变文件间的依赖关系 → 更新架构说明
+
+**根 CLAUDE.md 更新场景:**
+- ✓ 添加新模块/文件夹 → 更新模块目录清单
+- ✓ 修改模块间的架构关系 → 更新五层架构设计
+- ✓ 改变数据流或控制流 → 更新数据流向图
+
+### 规则 3: 提交前检查清单
+
+```
+□ 已更新修改文件的文件头注释
+□ 已更新所属文件夹的 CLAUDE.md
+□ 如有必要，已更新根 CLAUDE.md
+□ 所有三级文档内容一致
+□ 更新历史已记录修改日期和内容
+```
+## Plan规则
+
+### 规则1：
+所有的plan doc必须存在一个对应的checklist 每次执行结束后就更新这个checklist
+
+---
+
+## 文档维护工具 (Documentation Maintenance Tools)
+
+### 检查所有文件夹是否有 CLAUDE.md (Bash)
+
+```bash
+# Check all folders have CLAUDE.md
+for dir in agents agents/services agents/utils config core tools scheduler tests script; do
+    if [ ! -f "$dir/CLAUDE.md" ]; then
+        echo "❌ Missing: $dir/CLAUDE.md"
+    else
+        echo "✓ Found: $dir/CLAUDE.md"
+    fi
+done
+```
+
+### 检查所有Python文件是否有文件头注释 (Bash)
+
+```bash
+# Check all .py files have headers
+find . -name "*.py" -not -path "*/.*" -not -path "*/__pycache__/*" | while read file; do
+    if ! grep -q "# INPUT:" "$file"; then
+        echo "❌ Missing header: $file"
+    fi
+done
+```
+
+

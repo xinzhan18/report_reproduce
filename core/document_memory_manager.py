@@ -8,6 +8,15 @@ Provides intelligent paper retrieval based on:
 - Analysis caching
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing, logging, pathlib.Path, core.state.PaperMetadata, core.database, core.database_extensions, tools.document_tracker
+# OUTPUT: 对外提供 - DocumentMemoryManager类, get_document_memory_manager函数
+# POSITION: 系统地位 - [Core/Memory Layer] - 文档记忆管理器,提供智能论文检索/领域分类/阅读历史/分析缓存
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import List, Dict, Optional, Any
 import logging
 from pathlib import Path

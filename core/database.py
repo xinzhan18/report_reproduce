@@ -4,6 +4,15 @@ Database management for research automation system.
 Provides persistent storage for papers, citations, iterations, and memories.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - sqlite3, pathlib.Path, typing, datetime, json
+# OUTPUT: 对外提供 - ResearchDatabase类, get_database函数
+# POSITION: 系统地位 - [Core/Persistence Layer] - SQLite数据库核心,管理papers/citations/projects/iterations/memories表
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import sqlite3
 from pathlib import Path
 from typing import Optional, List, Dict, Any

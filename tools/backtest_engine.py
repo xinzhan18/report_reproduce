@@ -5,6 +5,19 @@ Provides a unified interface for running quantitative strategy backtests
 and calculating performance metrics.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - backtrader (回测框架), pandas (数据处理),
+#                   numpy (数值计算), typing (类型系统),
+#                   core/state (BacktestResults数据结构)
+# OUTPUT: 对外提供 - BacktestEngine类,提供run_backtest()方法,
+#                   执行策略回测并计算性能指标
+# POSITION: 系统地位 - Tool/Engine (工具层-执行引擎)
+#                     ExperimentAgent的核心依赖,负责策略回测执行
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import backtrader as bt
 import pandas as pd
 import numpy as np

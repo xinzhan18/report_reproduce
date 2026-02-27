@@ -4,6 +4,15 @@ Tests for BaseAgent
 Tests the Template Method Pattern and infrastructure handling.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - pytest, unittest.mock, agents.base_agent.BaseAgent, core.state
+# OUTPUT: 对外提供 - 测试函数集(test_base_agent_*/MockAgent测试类)
+# POSITION: 系统地位 - [Tests/Unit Tests] - BaseAgent单元测试,验证Template Method模式和生命周期管理
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from agents.base_agent import BaseAgent

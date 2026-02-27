@@ -5,6 +5,21 @@ Implements Template Method Pattern to eliminate code duplication across agents.
 All agents inherit from this class and implement only their specific business logic.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - abc (抽象基类), typing (类型系统), logging (日志),
+#                   pathlib (路径), core/state (ResearchState状态定义),
+#                   config/agent_config (Agent配置),
+#                   agents/services (LLMService, IntelligenceContext, OutputManager)
+# OUTPUT: 对外提供 - BaseAgent抽象基类,定义execute()生命周期、
+#                   call_llm()、save_artifact()等通用方法,
+#                   子类只需实现_execute()业务逻辑
+# POSITION: 系统地位 - Agent/Base (智能体层-抽象基类)
+#                     Template Method Pattern核心,消除四个Agent的重复代码
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 import logging

@@ -17,6 +17,15 @@ Usage Examples:
    llm = get_llm(provider="openai")  # Uses OpenAI with API key
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - os, typing, dotenv.load_dotenv, anthropic.Anthropic, config.auth_config
+# OUTPUT: 对外提供 - UnifiedLLMConfig类, get_llm函数, get_llm_config_instance函数, setup_oauth_interactive函数
+# POSITION: 系统地位 - [Config/LLM Layer] - OAuth认证LLM配置,统一API Key和OAuth两种认证方式
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import os
 from typing import Optional, Literal, Union
 from dotenv import load_dotenv

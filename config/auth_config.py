@@ -10,6 +10,15 @@ Supports:
 - Custom authentication providers
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - os, json, time, typing, pathlib.Path, dotenv.load_dotenv, dataclasses.dataclass, datetime
+# OUTPUT: 对外提供 - OAuthToken类, AuthConfig类, get_auth_config函数, get_api_key函数, setup_oauth函数
+# POSITION: 系统地位 - [Config/Security Layer] - API认证配置中心,支持API Key/OAuth/Bearer Token多种认证方式
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import os
 import json
 import time

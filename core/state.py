@@ -4,6 +4,19 @@ State management for the research automation system.
 Defines the ResearchState TypedDict that flows through the entire pipeline.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing (TypedDict, List, Dict类型系统), dataclasses (数据类),
+#                   datetime (时间戳)
+# OUTPUT: 对外提供 - ResearchState, PaperMetadata, ExperimentPlan, BacktestResults,
+#                   RankedPaper, StructuredInsights, DeepInsights, ResearchGap,
+#                   Hypothesis, ResearchSynthesis等状态类型定义
+# POSITION: 系统地位 - Core/State (核心层-状态定义)
+#                     整个系统的数据契约,所有Agent和Pipeline的状态流转基础
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import TypedDict, List, Dict, Optional, Literal, Any
 from dataclasses import dataclass, field
 from datetime import datetime

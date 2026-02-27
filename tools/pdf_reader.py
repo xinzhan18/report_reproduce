@@ -4,6 +4,15 @@ PDF downloading and reading capabilities.
 Downloads PDFs from arXiv and extracts text content for deeper analysis.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - requests, pathlib.Path, typing, time, core.database.get_database, PyPDF2 (可选)
+# OUTPUT: 对外提供 - PDFReader类, extract_key_information函数
+# POSITION: 系统地位 - [Tools/Document Layer] - PDF下载和解析工具,从arXiv下载PDF并提取文本/章节/关键信息
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import requests
 from pathlib import Path
 from typing import Optional, Dict, Any, List

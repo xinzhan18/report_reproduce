@@ -6,6 +6,15 @@ learning history, and evolution over time. Each agent becomes more intelligent
 through experience.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing, datetime, core.database.get_database, anthropic.Anthropic, json
+# OUTPUT: 对外提供 - AgentPersona类, get_agent_persona函数
+# POSITION: 系统地位 - [Core/Intelligence Layer] - Agent人格系统,管理人格特征/记忆/学习历史/经验积累
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from core.database import get_database

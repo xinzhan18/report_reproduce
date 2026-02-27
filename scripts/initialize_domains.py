@@ -7,6 +7,15 @@ Usage:
     python scripts/initialize_domains.py
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - sys, pathlib.Path, core.database, core.database_extensions
+# OUTPUT: 对外提供 - initialize_domains函数, main函数(命令行入口), DOMAIN_HIERARCHY常量
+# POSITION: 系统地位 - [Scripts/Initialization Layer] - 领域分类初始化脚本,创建量化金融研究的领域层级结构
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import sys
 from pathlib import Path
 

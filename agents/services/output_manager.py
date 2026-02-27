@@ -8,6 +8,19 @@ Provides:
 - Error handling
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing (类型系统), json (JSON序列化),
+#                   logging (日志), pathlib (路径),
+#                   file_manager (文件管理器)
+# OUTPUT: 对外提供 - OutputManager类,提供save_artifact()方法,
+#                   统一管理Agent输出文件的保存
+# POSITION: 系统地位 - Agent/Service (智能体层-服务)
+#                     Agent输出标准化工具,确保输出规范性
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import Union, Dict, List, Any
 import json
 import logging

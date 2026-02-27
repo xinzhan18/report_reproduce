@@ -4,6 +4,15 @@ Persistence and checkpointing for the research automation system.
 Uses LangGraph's SQLite checkpointer to persist state between agent executions.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - pathlib.Path, typing, langgraph.checkpoint.sqlite.SqliteSaver, os
+# OUTPUT: 对外提供 - get_checkpointer函数, create_config函数, get_project_state函数, CheckpointManager类
+# POSITION: 系统地位 - [Core/Persistence Layer] - LangGraph持久化管理,支持Pipeline状态checkpoint和恢复
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from pathlib import Path
 from typing import Optional, Dict, Any
 from langgraph.checkpoint.sqlite import SqliteSaver

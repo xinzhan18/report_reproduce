@@ -7,6 +7,15 @@ Classifies papers using:
 - Hybrid approach (best of both)
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing, logging, core.state.PaperMetadata, core.database.get_database, config.llm_config
+# OUTPUT: 对外提供 - DomainClassifier类, get_domain_classifier函数
+# POSITION: 系统地位 - [Tools/Classification Layer] - 领域分类器,支持关键词/LLM/混合三种论文分类方法
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import List, Tuple, Dict, Optional
 import logging
 

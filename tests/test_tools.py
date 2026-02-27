@@ -2,6 +2,15 @@
 Tests for tools module.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - pytest, tools.file_manager, pathlib.Path, tempfile, shutil
+# OUTPUT: 对外提供 - 测试函数集(test_file_manager_*/test_paper_fetcher_*等)
+# POSITION: 系统地位 - [Tests/Unit Tests] - 工具类单元测试,验证FileManager/PaperFetcher等工具功能
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import pytest
 from tools.file_manager import FileManager
 from pathlib import Path

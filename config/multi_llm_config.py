@@ -4,6 +4,15 @@ Enhanced multi-LLM configuration system.
 Supports multiple API keys per agent and multiple LLM providers.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - os, typing, dotenv.load_dotenv, anthropic.Anthropic, json, pathlib.Path
+# OUTPUT: 对外提供 - LLMConfiguration类, MultiLLMConfigManager类, get_llm_manager函数, get_agent_llm函数, get_agent_model_params函数
+# POSITION: 系统地位 - [Config/LLM Layer] - 多模型配置管理器,支持为不同Agent分配不同LLM和API Key
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import os
 from typing import Optional, Dict, Any, Literal
 from dotenv import load_dotenv

@@ -4,6 +4,15 @@ Citation and reference management system.
 Automatically tracks citations and generates properly formatted references.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing, core.database.get_database, datetime, re
+# OUTPUT: 对外提供 - CitationManager类
+# POSITION: 系统地位 - [Tools/Citation Layer] - 引用管理器,支持APA/IEEE/Chicago等格式,生成参考文献列表和BibTeX
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import List, Dict, Any, Optional, Literal
 from core.database import get_database
 from datetime import datetime

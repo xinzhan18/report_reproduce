@@ -5,6 +5,15 @@ Tracks all documents viewed, prevents duplicate processing,
 and maintains comprehensive reading history.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing, datetime, core.database.get_database, pathlib.Path, json
+# OUTPUT: 对外提供 - DocumentTracker类, DeduplicationManager类
+# POSITION: 系统地位 - [Core/Tracking Layer] - 文档追踪器,记录论文访问历史/防重复处理/生成阅读报告
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from core.database import get_database

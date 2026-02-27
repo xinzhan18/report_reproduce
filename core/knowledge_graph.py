@@ -5,6 +5,15 @@ Structured knowledge base that evolves through research iterations.
 Stores concepts, strategies, metrics, relationships, and domain expertise.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing, core.database.get_database, anthropic.Anthropic, json
+# OUTPUT: 对外提供 - QuantFinanceKnowledgeGraph类, get_knowledge_graph函数
+# POSITION: 系统地位 - [Core/Knowledge Layer] - 量化金融知识图谱,存储概念/策略/指标及其关系,支持知识演化
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import Dict, Any, List, Optional, Tuple
 from core.database import get_database
 from anthropic import Anthropic

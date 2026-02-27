@@ -4,6 +4,19 @@ File management utilities for the research automation system.
 Handles file I/O, directory creation, and project organization.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - json (JSON序列化), os (操作系统接口),
+#                   pathlib (路径处理), typing (类型系统),
+#                   datetime (时间戳)
+# OUTPUT: 对外提供 - FileManager类,提供save_json()、load_json()、
+#                   create_project_dir()等文件管理方法
+# POSITION: 系统地位 - Tool/Manager (工具层-文件管理)
+#                     所有Agent和Pipeline的文件操作基础设施
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import json
 import os
 from pathlib import Path

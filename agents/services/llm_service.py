@@ -9,6 +9,19 @@ Provides:
 - Token usage tracking
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing (类型系统), json (JSON处理), time (重试延迟),
+#                   logging (日志), re (正则表达式),
+#                   config/llm_config (模型名称解析)
+# OUTPUT: 对外提供 - LLMService类,提供call()方法(统一LLM调用接口),
+#                   支持自动重试、JSON解析、token追踪
+# POSITION: 系统地位 - Agent/Service (智能体层-服务)
+#                     所有Agent调用LLM的标准化接口,被BaseAgent使用
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import Union, Dict, Any, Optional
 import json
 import time

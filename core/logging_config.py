@@ -2,6 +2,15 @@
 Comprehensive logging and monitoring configuration.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - logging, sys, pathlib.Path, typing, datetime, json
+# OUTPUT: 对外提供 - ResearchLogger类, get_logger函数, log_info/log_error/log_warning便捷函数
+# POSITION: 系统地位 - [Core/Infrastructure Layer] - 日志配置中心,管理应用/Agent/API/错误日志
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import logging
 import sys
 from pathlib import Path

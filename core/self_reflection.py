@@ -5,6 +5,15 @@ Agents automatically reflect on their performance, learn from mistakes,
 and continuously improve. Mistakes are recorded and never repeated.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - typing, datetime, anthropic.Anthropic, core.agent_persona, core.database, json
+# OUTPUT: 对外提供 - SelfReflectionEngine类
+# POSITION: 系统地位 - [Core/Intelligence Layer] - 自我反思引擎,实现错误学习/性能反思/持续改进机制
+#
+# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from anthropic import Anthropic

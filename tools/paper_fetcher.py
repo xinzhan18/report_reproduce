@@ -2,6 +2,20 @@
 Paper fetching utilities for arXiv and other academic sources.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - arxiv SDK (论文检索), requests (HTTP请求),
+#                   typing (类型系统), datetime (时间处理),
+#                   core/state (PaperMetadata数据结构),
+#                   config/data_sources (ARXIV_CONFIG配置)
+# OUTPUT: 对外提供 - PaperFetcher类,提供fetch_recent_papers()、
+#                   fetch_by_id()、search_papers()等方法
+# POSITION: 系统地位 - Tool/Fetcher (工具层-数据获取)
+#                     IdeationAgent的核心依赖,负责文献数据源对接
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import arxiv
 import requests
 from typing import List, Optional, Dict, Any

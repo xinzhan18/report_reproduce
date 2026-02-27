@@ -4,6 +4,21 @@ LLM configuration for Claude API integration.
 Supports both Sonnet (complex reasoning) and Haiku (simple tasks) models.
 """
 
+# ============================================================================
+# 文件头注释 (File Header)
+# INPUT:  外部依赖 - os (环境变量), dotenv (环境变量加载),
+#                   anthropic SDK (Anthropic API客户端),
+#                   typing (类型系统)
+# OUTPUT: 对外提供 - LLMConfig类 (LLM配置管理器),
+#                   MODEL_IDS字典 (模型ID映射),
+#                   ModelType类型 (模型类型定义),
+#                   get_model_id()函数 (获取模型ID)
+# POSITION: 系统地位 - Config/LLM (配置层-LLM配置)
+#                     所有Agent的LLM调用基础,定义模型选择和API认证
+#
+# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
+# ============================================================================
+
 import os
 from typing import Optional, Literal
 from dotenv import load_dotenv
