@@ -14,8 +14,7 @@ from core.state import ResearchState
 from tools.file_manager import FileManager
 from config.agent_config import get_agent_config
 from config.llm_config import get_model_name
-from core.agent_persona import get_agent_persona
-from core.self_reflection import SelfReflectionEngine
+from core.agent_memory_manager import get_agent_memory_manager
 from core.knowledge_graph import get_knowledge_graph
 import json
 from datetime import datetime
@@ -40,10 +39,46 @@ class WritingAgent:
         self.config = get_agent_config("writing")
         self.model = get_model_name(self.config.get("model", "sonnet"))
 
-        # Initialize agent intelligence components
-        self.persona = get_agent_persona("writing")
-        self.reflection_engine = SelfReflectionEngine("writing", llm)
+        # Initialize agent intelligence components (NEW: Markdown-based memory system)
+        self.memory_manager = get_agent_memory_manager("writing")
         self.knowledge_graph = get_knowledge_graph()
+
+    def _build_system_prompt(self, memories: Dict[str, str]) -> str:
+        """
+        Build system prompt with persona and memory context.
+
+        Args:
+            memories: Dictionary containing persona, memory, mistakes, and daily logs
+
+        Returns:
+            Complete system prompt string
+        """
+        return f"""# Your Identity and Persona
+
+{memories['persona']}
+
+---
+
+# Your Long-term Knowledge and Insights
+
+{memories['memory']}
+
+---
+
+# Mistakes to Avoid (IMPORTANT - Review Before Each Task)
+
+{memories['mistakes']}
+
+---
+
+# Recent Context (Last 3 Days of Work)
+
+{memories['daily_recent']}
+
+---
+
+You are now executing a new task. Use your persona, knowledge, and past learnings to perform at your best. Avoid repeating past mistakes.
+"""
 
     def __call__(self, state: ResearchState) -> ResearchState:
         """
@@ -62,18 +97,11 @@ class WritingAgent:
         # Update status
         state["status"] = "writing"
 
-        # Recall past writing experiences
-        writing_memories = self.persona.recall_memories(
-            memory_type="experience",
-            limit=5
-        )
-
-        if writing_memories:
-            print(f"✓ Recalled {len(writing_memories)} past writing experiences")
-
-        # Get mistake prevention guide
-        mistake_guide = self.reflection_engine.get_mistake_prevention_guide()
-        print(f"\n📋 Reviewing past writing mistakes...")
+        # Load all memories (persona, memory, mistakes, daily logs)
+        print("🧠 Loading agent memories...")
+        self.memories = self.memory_manager.load_all_memories()
+        self.system_prompt = self._build_system_prompt(self.memories)
+        print(f"✓ Loaded persona, long-term memory, mistakes registry, and recent daily logs")
 
         # Step 1: Create report structure
         print("Creating report structure...")
@@ -134,53 +162,54 @@ class WritingAgent:
         print(f"Writing Agent: Completed")
         print(f"{'='*60}\n")
 
-        # Self-reflection on writing performance
-        execution_context = {
-            "sections_generated": len(sections),
-            "report_length": len(final_report),
-            "sections": list(sections.keys())
-        }
+        # Save daily log with execution details
+        execution_log = f"""## Research Report Writing
 
-        results = {
-            "report_completed": True,
-            "sections_count": len(sections),
-            "final_length": len(final_report),
-            "draft_length": len(report_draft)
-        }
+### Report Structure
+- Sections generated: {len(sections)}
+- Section names: {', '.join(sections.keys())}
 
-        reflection = self.reflection_engine.reflect_on_execution(
+### Report Metrics
+- Draft length: {len(report_draft)} characters
+- Final report length: {len(final_report)} characters
+- Improvement: {len(final_report) - len(report_draft)} characters added in polishing
+
+### Sections Included
+{chr(10).join(f'- {name}: {len(content)} chars' for name, content in sections.items())}
+"""
+
+        learnings = [
+            f"Successfully generated {len(sections)}-section research report",
+            f"Report integrates findings from all previous agents",
+            f"Final length: {len(final_report)} characters"
+        ]
+
+        mistakes_encountered = []  # Track if any issues occurred
+
+        reflection_text = f"""
+## Reflection on Execution
+
+### What Went Well
+- Comprehensive report structure created
+- All sections properly generated and polished
+- Successfully integrated: hypothesis, literature review, methodology, results
+- Report is ready for review
+
+### Areas for Improvement
+- Consider adding more visual elements (charts, tables)
+- Enhance discussion of limitations
+- Add more context for future research directions
+"""
+
+        self.memory_manager.save_daily_log(
             project_id=state["project_id"],
-            execution_context=execution_context,
-            results=results
+            execution_log=execution_log,
+            learnings=learnings,
+            mistakes=mistakes_encountered,
+            reflection=reflection_text
         )
 
-        print(f"✓ Self-reflection completed (performance: {reflection.get('performance_score', 5)}/10)")
-
-        # Record learning event
-        self.persona.record_learning_event(
-            event_type="success",
-            description=f"Generated comprehensive research report",
-            project_id=state["project_id"],
-            lessons_learned=[
-                f"Report contains {len(sections)} sections",
-                f"Final length: {len(final_report)} characters",
-                "Integrated all agent outputs successfully"
-            ],
-            impact_score=0.9
-        )
-
-        # Add memory of this writing session
-        self.persona.add_memory(
-            memory_type="experience",
-            content=f"Wrote report for: {state['hypothesis'][:100]}",
-            context=f"Project {state['project_id']}",
-            importance=0.8,
-            emotional_valence=1.0,
-            tags=["report", "writing", "completion"]
-        )
-
-        # Evolve expertise
-        self.persona.evolve_expertise()
+        print(f"✓ Daily log saved with report generation details and learnings")
 
         # Update final status
         state["status"] = "completed"
@@ -270,6 +299,7 @@ Write a well-structured {section_name} section for this research paper."""
             model=self.model,
             max_tokens=2000,
             temperature=self.config.get("temperature", 0.4),
+            system=self.system_prompt,
             messages=[{"role": "user", "content": prompt}]
         )
 
@@ -445,6 +475,7 @@ Output the complete polished report. Maintain all sections and content, just imp
             model=self.model,
             max_tokens=8000,
             temperature=0.3,
+            system=self.system_prompt,
             messages=[{"role": "user", "content": prompt}]
         )
 

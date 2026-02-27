@@ -15,8 +15,7 @@ from core.state import ResearchState, ExperimentPlan
 from tools.file_manager import FileManager
 from config.agent_config import get_agent_config
 from config.llm_config import get_model_name
-from core.agent_persona import get_agent_persona
-from core.self_reflection import SelfReflectionEngine
+from core.agent_memory_manager import get_agent_memory_manager
 from core.knowledge_graph import get_knowledge_graph
 import json
 
@@ -40,10 +39,46 @@ class PlanningAgent:
         self.config = get_agent_config("planning")
         self.model = get_model_name(self.config.get("model", "sonnet"))
 
-        # Initialize agent intelligence components
-        self.persona = get_agent_persona("planning")
-        self.reflection_engine = SelfReflectionEngine("planning", llm)
+        # Initialize agent intelligence components (NEW: Markdown-based memory system)
+        self.memory_manager = get_agent_memory_manager("planning")
         self.knowledge_graph = get_knowledge_graph()
+
+    def _build_system_prompt(self, memories: Dict[str, str]) -> str:
+        """
+        Build system prompt with persona and memory context.
+
+        Args:
+            memories: Dictionary containing persona, memory, mistakes, and daily logs
+
+        Returns:
+            Complete system prompt string
+        """
+        return f"""# Your Identity and Persona
+
+{memories['persona']}
+
+---
+
+# Your Long-term Knowledge and Insights
+
+{memories['memory']}
+
+---
+
+# Mistakes to Avoid (IMPORTANT - Review Before Each Task)
+
+{memories['mistakes']}
+
+---
+
+# Recent Context (Last 3 Days of Work)
+
+{memories['daily_recent']}
+
+---
+
+You are now executing a new task. Use your persona, knowledge, and past learnings to perform at your best. Avoid repeating past mistakes.
+"""
 
     def __call__(self, state: ResearchState) -> ResearchState:
         """
@@ -62,6 +97,12 @@ class PlanningAgent:
         # Update status
         state["status"] = "planning"
 
+        # Load all memories (persona, memory, mistakes, daily logs)
+        print("🧠 Loading agent memories...")
+        self.memories = self.memory_manager.load_all_memories()
+        self.system_prompt = self._build_system_prompt(self.memories)
+        print(f"✓ Loaded persona, long-term memory, mistakes registry, and recent daily logs")
+
         # Consult knowledge graph for related strategies and methodologies
         hypothesis_keywords = state["hypothesis"][:100].lower()
         related_strategies = self.knowledge_graph.search_knowledge(
@@ -79,19 +120,6 @@ class PlanningAgent:
 
         if related_metrics:
             print(f"✓ Found {len(related_metrics)} relevant metrics")
-
-        # Recall past planning experiences
-        planning_memories = self.persona.recall_memories(
-            memory_type="experience",
-            limit=5
-        )
-
-        if planning_memories:
-            print(f"✓ Recalled {len(planning_memories)} past planning experiences")
-
-        # Get mistake prevention guide
-        mistake_guide = self.reflection_engine.get_mistake_prevention_guide()
-        print(f"\n📋 Reviewing past planning mistakes...")
 
         # Step 1: Design experiment plan
         experiment_plan = self.design_experiment(
@@ -191,39 +219,54 @@ class PlanningAgent:
         print(f"Planning Agent: Completed")
         print(f"{'='*60}\n")
 
-        # Self-reflection on planning performance
-        execution_context = {
-            "hypothesis": state["hypothesis"][:200],
-            "implementation_steps": len(experiment_plan["implementation_steps"]),
-            "feasibility": is_feasible
-        }
+        # Save daily log with execution details
+        execution_log = f"""## Experiment Planning Execution
 
-        results = {
-            "plan_created": True,
-            "steps_defined": len(experiment_plan["implementation_steps"]),
-            "success_criteria_defined": len(experiment_plan["success_criteria"]),
-            "feasible": is_feasible
-        }
+### Hypothesis
+{state["hypothesis"][:300]}...
 
-        reflection = self.reflection_engine.reflect_on_execution(
+### Experiment Plan Designed
+- Methodology: {experiment_plan['methodology']}
+- Implementation Steps: {len(experiment_plan["implementation_steps"])}
+- Success Criteria Defined: {len(experiment_plan["success_criteria"])}
+- Feasibility: {'Feasible' if is_feasible else 'Needs Review'}
+
+### Key Components
+- Data Requirements: {experiment_plan.get('data_requirements', 'Specified')}
+- Backtesting Approach: {experiment_plan.get('backtesting_approach', 'Defined')}
+- Risk Factors: {len(experiment_plan.get('risk_factors', []))} identified
+"""
+
+        learnings = [
+            f"Successfully designed {len(experiment_plan['implementation_steps'])}-step experiment plan",
+            f"Methodology: {experiment_plan['methodology']}",
+            f"Plan feasibility: {'Validated' if is_feasible else 'Requires adjustments'}"
+        ]
+
+        mistakes_encountered = []  # Track if any issues occurred
+
+        reflection_text = f"""
+## Reflection on Execution
+
+### What Went Well
+- Comprehensive experiment plan created with {len(experiment_plan['implementation_steps'])} clear steps
+- Success criteria well-defined: {', '.join(experiment_plan['success_criteria'].keys())}
+- Feasibility assessment: {'Plan is executable' if is_feasible else 'Identified concerns'}
+
+### Areas for Improvement
+- Consider edge cases in implementation
+- Validate data requirements with Experiment Agent
+"""
+
+        self.memory_manager.save_daily_log(
             project_id=state["project_id"],
-            execution_context=execution_context,
-            results=results
+            execution_log=execution_log,
+            learnings=learnings,
+            mistakes=mistakes_encountered,
+            reflection=reflection_text
         )
 
-        print(f"✓ Self-reflection completed (performance: {reflection.get('performance_score', 5)}/10)")
-
-        # Record learning event
-        self.persona.record_learning_event(
-            event_type="success",
-            description=f"Designed experiment plan for hypothesis",
-            project_id=state["project_id"],
-            lessons_learned=[
-                f"Created {len(experiment_plan['implementation_steps'])} implementation steps",
-                f"Defined success criteria: {list(experiment_plan['success_criteria'].keys())}"
-            ],
-            impact_score=0.8
-        )
+        print(f"✓ Daily log saved with planning details and learnings")
 
         # Update knowledge graph with plan insights
         findings = [
@@ -236,9 +279,6 @@ class PlanningAgent:
             findings=findings,
             llm=self.llm
         )
-
-        # Evolve expertise
-        self.persona.evolve_expertise()
 
         return state
 
@@ -295,6 +335,7 @@ Be specific about technical details for implementing a quantitative trading stra
             model=self.model,
             max_tokens=3000,
             temperature=self.config.get("temperature", 0.3),
+            system=self.system_prompt,
             messages=[{"role": "user", "content": prompt}]
         )
 
@@ -379,6 +420,7 @@ Use formal academic language appropriate for a finance research paper."""
             model=self.model,
             max_tokens=2000,
             temperature=self.config.get("temperature", 0.3),
+            system=self.system_prompt,
             messages=[{"role": "user", "content": prompt}]
         )
 
@@ -421,6 +463,7 @@ Write 200-300 words."""
             model=self.model,
             max_tokens=1500,
             temperature=self.config.get("temperature", 0.3),
+            system=self.system_prompt,
             messages=[{"role": "user", "content": prompt}]
         )
 

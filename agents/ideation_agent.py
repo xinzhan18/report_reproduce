@@ -8,15 +8,14 @@ Responsible for:
 - Generating testable hypotheses
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict
 from anthropic import Anthropic
 from core.state import ResearchState, PaperMetadata
 from tools.paper_fetcher import PaperFetcher
 from tools.file_manager import FileManager
 from config.agent_config import get_agent_config
 from config.llm_config import get_model_name
-from core.agent_persona import get_agent_persona
-from core.self_reflection import SelfReflectionEngine
+from core.agent_memory_manager import get_agent_memory_manager
 from core.knowledge_graph import get_knowledge_graph
 from tools.smart_literature_access import get_literature_access_manager
 import json
@@ -28,7 +27,9 @@ class IdeationAgent:
     Enhanced with persona, self-reflection, and knowledge graph capabilities.
     """
 
-    def __init__(self, llm: Anthropic, paper_fetcher: PaperFetcher, file_manager: FileManager):
+    def __init__(
+        self, llm: Anthropic, paper_fetcher: PaperFetcher, file_manager: FileManager
+    ):
         """
         Initialize Ideation Agent.
 
@@ -43,11 +44,47 @@ class IdeationAgent:
         self.config = get_agent_config("ideation")
         self.model = get_model_name(self.config.get("model", "sonnet"))
 
-        # Initialize agent intelligence components
-        self.persona = get_agent_persona("ideation")
-        self.reflection_engine = SelfReflectionEngine("ideation", llm)
+        # Initialize agent intelligence components (NEW: Markdown-based memory system)
+        self.memory_manager = get_agent_memory_manager("ideation")
         self.knowledge_graph = get_knowledge_graph()
         self.literature_access = get_literature_access_manager()
+
+    def _build_system_prompt(self, memories: Dict[str, str]) -> str:
+        """
+        Build system prompt with persona and memory context.
+
+        Args:
+            memories: Dictionary containing persona, memory, mistakes, and daily logs
+
+        Returns:
+            Complete system prompt string
+        """
+        return f"""# Your Identity and Persona
+
+{memories['persona']}
+
+---
+
+# Your Long-term Knowledge and Insights
+
+{memories['memory']}
+
+---
+
+# Mistakes to Avoid (IMPORTANT - Review Before Each Task)
+
+{memories['mistakes']}
+
+---
+
+# Recent Context (Last 3 Days of Work)
+
+{memories['daily_recent']}
+
+---
+
+You are now executing a new task. Use your persona, knowledge, and past learnings to perform at your best. Avoid repeating past mistakes.
+"""
 
     def __call__(self, state: ResearchState) -> ResearchState:
         """
@@ -60,37 +97,32 @@ class IdeationAgent:
             Updated research state with ideation outputs
         """
         print(f"\n{'='*60}")
-        print(f"Ideation Agent: Starting literature review")
+        print("Ideation Agent: Starting literature review")
         print(f"Research direction: {state['research_direction']}")
         print(f"{'='*60}\n")
 
         # Update status
         state["status"] = "ideation"
 
+        # Load all memories (persona, memory, mistakes, daily logs)
+        print("🧠 Loading agent memories...")
+        self.memories = self.memory_manager.load_all_memories()
+        self.system_prompt = self._build_system_prompt(self.memories)
+        print(
+            "✓ Loaded persona, long-term memory, mistakes registry, and recent daily logs"
+        )
+
         # Consult knowledge graph for related concepts
         related_knowledge = self.knowledge_graph.search_knowledge(
-            query=state["research_direction"],
-            node_type=None
+            query=state["research_direction"], node_type=None
         )
 
         if related_knowledge:
-            print(f"✓ Found {len(related_knowledge)} related concepts in knowledge graph")
+            print(
+                f"✓ Found {len(related_knowledge)} related concepts in knowledge graph"
+            )
             for knowledge in related_knowledge[:3]:
                 print(f"  - {knowledge['name']}: {knowledge['description'][:80]}...")
-
-        # Recall past learnings
-        recent_memories = self.persona.recall_memories(
-            memory_type="insight",
-            limit=5
-        )
-
-        if recent_memories:
-            print(f"✓ Recalled {len(recent_memories)} past insights")
-
-        # Get mistake prevention guide
-        mistake_guide = self.reflection_engine.get_mistake_prevention_guide()
-        print(f"\n📋 Reviewing past mistakes to avoid repetition...")
-        print(mistake_guide[:300] + "..." if len(mistake_guide) > 300 else mistake_guide)
 
         # Step 1: Scan and fetch papers
         papers = self.scan_papers(state["research_direction"])
@@ -103,101 +135,108 @@ class IdeationAgent:
             data={"papers": papers},
             project_id=state["project_id"],
             filename="papers_analyzed.json",
-            subdir="literature"
+            subdir="literature",
         )
 
         # Step 2: Analyze literature
         literature_summary = self.analyze_literature(
-            papers,
-            state["research_direction"]
+            papers, state["research_direction"]
         )
         state["literature_summary"] = literature_summary
 
-        print(f"✓ Completed literature analysis")
+        print("✓ Completed literature analysis")
 
         # Save literature summary
         self.file_manager.save_text(
             content=literature_summary,
             project_id=state["project_id"],
             filename="literature_summary.md",
-            subdir="literature"
+            subdir="literature",
         )
 
         # Step 3: Identify research gaps
-        research_gaps = self.identify_research_gaps(
-            literature_summary,
-            papers
-        )
+        research_gaps = self.identify_research_gaps(literature_summary, papers)
         state["research_gaps"] = research_gaps
 
         print(f"✓ Identified {len(research_gaps)} research gaps")
 
         # Step 4: Generate hypothesis
         hypothesis = self.generate_hypothesis(
-            research_gaps,
-            literature_summary,
-            state["research_direction"]
+            research_gaps, literature_summary, state["research_direction"]
         )
         state["hypothesis"] = hypothesis
 
-        print(f"✓ Generated research hypothesis")
+        print("✓ Generated research hypothesis")
         print(f"\nHypothesis: {hypothesis[:200]}...")
 
         # Save hypothesis
         self.file_manager.save_text(
-            content=f"# Research Hypothesis\n\n{hypothesis}\n\n## Research Gaps\n\n" +
-                   "\n".join(f"- {gap}" for gap in research_gaps),
+            content=f"# Research Hypothesis\n\n{hypothesis}\n\n## Research Gaps\n\n"
+            + "\n".join(f"- {gap}" for gap in research_gaps),
             project_id=state["project_id"],
             filename="hypothesis.md",
-            subdir="literature"
+            subdir="literature",
         )
 
         print(f"\n{'='*60}")
-        print(f"Ideation Agent: Completed")
+        print("Ideation Agent: Completed")
         print(f"{'='*60}\n")
 
-        # Self-reflection on performance
-        execution_context = {
-            "research_direction": state["research_direction"],
-            "papers_found": len(papers),
-            "gaps_identified": len(research_gaps)
-        }
+        # Save daily log with execution details
+        execution_log = f"""## Literature Review Execution
 
-        results = {
-            "papers_reviewed": len(papers),
-            "literature_summary_length": len(literature_summary),
-            "research_gaps": len(research_gaps),
-            "hypothesis_generated": bool(hypothesis)
-        }
+### Papers Scanned
+- Total papers found: {len(papers)}
+- Research direction: {state['research_direction']}
 
-        reflection = self.reflection_engine.reflect_on_execution(
+### Analysis Results
+- Literature summary length: {len(literature_summary)} characters
+- Research gaps identified: {len(research_gaps)}
+- Hypothesis generated: {'Yes' if hypothesis else 'No'}
+
+### Research Gaps Found
+{chr(10).join(f'- {gap}' for gap in research_gaps)}
+
+### Hypothesis
+{hypothesis[:500]}...
+"""
+
+        learnings = [
+            f"Successfully analyzed {len(papers)} papers on {state['research_direction']}",
+            f"Identified {len(research_gaps)} distinct research gaps",
+        ]
+
+        mistakes_encountered = []  # Track if any issues occurred
+
+        reflection_text = f"""
+## Reflection on Execution
+
+### What Went Well
+- Literature scan successfully retrieved {len(papers)} relevant papers
+- Gap analysis identified {len(research_gaps)} testable opportunities
+- Hypothesis is clear and actionable
+
+### Areas for Improvement
+- Consider expanding search keywords for broader coverage
+- Validate hypothesis testability with Planning Agent
+"""
+
+        self.memory_manager.save_daily_log(
             project_id=state["project_id"],
-            execution_context=execution_context,
-            results=results
+            execution_log=execution_log,
+            learnings=learnings,
+            mistakes=mistakes_encountered,
+            reflection=reflection_text,
         )
 
-        print(f"✓ Self-reflection completed (performance: {reflection.get('performance_score', 5)}/10)")
-
-        # Record learning event
-        self.persona.record_learning_event(
-            event_type="success",
-            description=f"Completed literature review for {state['research_direction']}",
-            project_id=state["project_id"],
-            lessons_learned=[f"Reviewed {len(papers)} papers", f"Identified {len(research_gaps)} gaps"],
-            impact_score=0.7
-        )
+        print("✓ Daily log saved with execution details and learnings")
 
         # Update knowledge graph with new insights
         if research_gaps:
             findings = [f"Research gap: {gap}" for gap in research_gaps[:3]]
             self.knowledge_graph.update_knowledge_from_research(
-                project_id=state["project_id"],
-                findings=findings,
-                llm=self.llm
+                project_id=state["project_id"], findings=findings, llm=self.llm
             )
-
-        # Evolve expertise
-        self.persona.evolve_expertise()
 
         return state
 
@@ -217,14 +256,14 @@ class IdeationAgent:
         # Fetch recent papers from categories
         recent_papers = self.paper_fetcher.fetch_recent_papers(
             categories=categories,
-            days_back=7  # Last week
+            days_back=7,  # Last week
         )
 
         # Also search by keywords
         keyword_papers = self.paper_fetcher.fetch_papers_by_keywords(
             keywords=[research_direction] + keywords[:5],
             categories=categories,
-            max_results=30
+            max_results=30,
         )
 
         # Combine and deduplicate
@@ -239,17 +278,13 @@ class IdeationAgent:
 
         # Filter by relevance
         relevant_papers = self.paper_fetcher.filter_papers_by_relevance(
-            unique_papers,
-            keywords=[research_direction] + keywords,
-            min_score=0.2
+            unique_papers, keywords=[research_direction] + keywords, min_score=0.2
         )
 
-        return relevant_papers[:self.config.get("max_papers_per_scan", 50)]
+        return relevant_papers[: self.config.get("max_papers_per_scan", 50)]
 
     def analyze_literature(
-        self,
-        papers: List[PaperMetadata],
-        research_direction: str
+        self, papers: List[PaperMetadata], research_direction: str
     ) -> str:
         """
         Analyze papers and create comprehensive literature summary.
@@ -272,9 +307,8 @@ class IdeationAgent:
 
         papers_text = "\n".join(paper_texts)
 
-        # Create analysis prompt
-        prompt = f"""You are an expert researcher in quantitative finance and financial engineering.
-Analyze the following recent papers related to "{research_direction}" and provide a comprehensive literature review.
+        # Create analysis prompt (task-specific, persona is in system prompt)
+        prompt = f"""Analyze the following recent papers related to "{research_direction}" and provide a comprehensive literature review.
 
 Papers to analyze:
 {papers_text}
@@ -292,15 +326,14 @@ Write a detailed literature review (800-1000 words) that synthesizes these paper
             model=self.model,
             max_tokens=4000,
             temperature=self.config.get("temperature", 0.7),
-            messages=[{"role": "user", "content": prompt}]
+            system=self.system_prompt,
+            messages=[{"role": "user", "content": prompt}],
         )
 
         return response.content[0].text
 
     def identify_research_gaps(
-        self,
-        literature_summary: str,
-        papers: List[PaperMetadata]
+        self, literature_summary: str, papers: List[PaperMetadata]
     ) -> List[str]:
         """
         Identify research gaps and opportunities.
@@ -330,7 +363,8 @@ Output as JSON array of strings."""
             model=self.model,
             max_tokens=2000,
             temperature=self.config.get("temperature", 0.7),
-            messages=[{"role": "user", "content": prompt}]
+            system=self.system_prompt,
+            messages=[{"role": "user", "content": prompt}],
         )
 
         # Parse response
@@ -341,7 +375,7 @@ Output as JSON array of strings."""
             if "```json" in content:
                 json_str = content.split("```json")[1].split("```")[0].strip()
             elif "[" in content and "]" in content:
-                json_str = content[content.find("["):content.rfind("]")+1]
+                json_str = content[content.find("[") : content.rfind("]") + 1]
             else:
                 json_str = content
 
@@ -357,10 +391,7 @@ Output as JSON array of strings."""
         return [line for line in lines if len(line) > 50][:7]
 
     def generate_hypothesis(
-        self,
-        research_gaps: List[str],
-        literature_summary: str,
-        research_direction: str
+        self, research_gaps: List[str], literature_summary: str, research_direction: str
     ) -> str:
         """
         Generate testable research hypothesis.
@@ -375,8 +406,7 @@ Output as JSON array of strings."""
         """
         gaps_text = "\n".join(f"- {gap}" for gap in research_gaps)
 
-        prompt = f"""You are an expert in quantitative finance research. Based on the identified research gaps,
-generate a specific, testable research hypothesis that can be validated through backtesting.
+        prompt = f"""Based on the identified research gaps, generate a specific, testable research hypothesis that can be validated through backtesting.
 
 Research Direction: {research_direction}
 
@@ -406,7 +436,8 @@ Format your response as:
             model=self.model,
             max_tokens=2000,
             temperature=self.config.get("temperature", 0.7),
-            messages=[{"role": "user", "content": prompt}]
+            system=self.system_prompt,
+            messages=[{"role": "user", "content": prompt}],
         )
 
         return response.content[0].text
