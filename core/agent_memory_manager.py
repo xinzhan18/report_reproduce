@@ -5,9 +5,10 @@ Agent Memory Manager - Markdown-based memory system
 
 # ============================================================================
 # 文件头注释 (File Header)
-# INPUT:  外部依赖 - Path (pathlib), datetime, typing.Dict/List/Optional
-# OUTPUT: 对外提供 - AgentMemoryManager类, get_agent_memory_manager函数
+# INPUT:  外部依赖 - Path (pathlib), datetime, typing.Dict/List/Optional, shutil (迁移)
+# OUTPUT: 对外提供 - AgentMemoryManager类, get_agent_memory_manager函数, migrate_to_new_path()迁移方法
 # POSITION: 系统地位 - [Core/Memory Layer] - Agent记忆管理器,管理Markdown记忆系统(persona/memory/daily/mistakes)
+#                     默认路径: data/{agent_name}/ (从data/agents/{agent_name}/迁移,支持向后兼容)
 #
 # 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
 # ============================================================================
@@ -20,10 +21,19 @@ from typing import Dict, List, Optional
 class AgentMemoryManager:
     """管理单个agent的Markdown记忆系统"""
 
-    def __init__(self, agent_name: str, base_path: str = "data/agents"):
+    def __init__(self, agent_name: str, base_path: str = "data"):
         self.agent_name = agent_name
         self.base_path = Path(base_path)
-        self.agent_dir = self.base_path / agent_name
+
+        # Backward compatibility: check old path data/agents/{name} vs new path data/{name}
+        old_path = Path("data/agents") / agent_name
+        new_path = self.base_path / agent_name
+
+        if old_path.exists() and not new_path.exists():
+            self.agent_dir = old_path  # Use old path during migration
+        else:
+            self.agent_dir = new_path  # Use new path
+
         self.daily_dir = self.agent_dir / "daily"
 
         # 确保目录存在
@@ -34,6 +44,32 @@ class AgentMemoryManager:
         self.persona_file = self.agent_dir / "persona.md"
         self.memory_file = self.agent_dir / "memory.md"
         self.mistakes_file = self.agent_dir / "mistakes.md"
+
+    def migrate_to_new_path(self):
+        """
+        Migrate memory files from old path (data/agents/{name}) to new path (data/{name}).
+        Safe operation: copies files, does not delete old path.
+        """
+        import shutil
+        old_path = Path("data/agents") / self.agent_name
+        new_path = Path("data") / self.agent_name
+
+        if old_path.exists() and old_path != self.agent_dir:
+            new_path.mkdir(parents=True, exist_ok=True)
+            for item in old_path.rglob("*"):
+                if item.is_file():
+                    relative = item.relative_to(old_path)
+                    target = new_path / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    if not target.exists():
+                        shutil.copy2(item, target)
+
+            # Update internal references to new path
+            self.agent_dir = new_path
+            self.daily_dir = new_path / "daily"
+            self.persona_file = new_path / "persona.md"
+            self.memory_file = new_path / "memory.md"
+            self.mistakes_file = new_path / "mistakes.md"
 
     def load_all_memories(self) -> Dict[str, str]:
         """

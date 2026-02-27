@@ -1,5 +1,8 @@
 """
-Planning Agent - Experiment design and planning.
+Planning Agent - Experiment design and planning (REFACTORED)
+
+Refactored to inherit from BaseAgent, eliminating infrastructure duplication.
+Now focuses purely on business logic.
 
 Responsible for:
 - Transforming hypotheses into executable experiment plans
@@ -11,16 +14,14 @@ Responsible for:
 
 # ============================================================================
 # 文件头注释 (File Header)
-# INPUT:  外部依赖 - typing (类型系统), anthropic (Anthropic客户端),
+# INPUT:  外部依赖 - agents/base_agent (BaseAgent基类继承),
+#                   typing (类型系统), anthropic (Anthropic客户端),
 #                   core/state (ResearchState, ExperimentPlan),
-#                   tools/file_manager (FileManager文件管理),
-#                   config/agent_config (Agent配置),
-#                   config/llm_config (模型名称),
-#                   core/agent_memory_manager (记忆管理),
-#                   core/knowledge_graph (知识图谱)
-# OUTPUT: 对外提供 - PlanningAgent类,实现execute()方法,
-#                   输出实验计划、方法论设计、数据需求
+#                   tools/file_manager (FileManager文件管理)
+# OUTPUT: 对外提供 - PlanningAgent类,继承自BaseAgent,
+#                   实现_execute()方法,输出实验计划、方法论设计、数据需求
 # POSITION: 系统地位 - Agent/Planning (智能体层-规划智能体)
+#                     继承BaseAgent,消除基础设施重复代码,
 #                     Pipeline第二阶段,将假设转化为可执行实验计划
 #
 # 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
@@ -28,19 +29,19 @@ Responsible for:
 
 from typing import Dict, Any
 from anthropic import Anthropic
+
+from agents.base_agent import BaseAgent
 from core.state import ResearchState, ExperimentPlan
 from tools.file_manager import FileManager
-from config.agent_config import get_agent_config
-from config.llm_config import get_model_name
-from core.agent_memory_manager import get_agent_memory_manager
-from core.knowledge_graph import get_knowledge_graph
 import json
 
 
-class PlanningAgent:
+class PlanningAgent(BaseAgent):
     """
     Agent responsible for experiment planning and design.
-    Enhanced with persona, self-reflection, and knowledge graph capabilities.
+
+    Refactored to use BaseAgent for infrastructure.
+    All memory, LLM calling, and output management handled by base class.
     """
 
     def __init__(self, llm: Anthropic, file_manager: FileManager):
@@ -51,55 +52,14 @@ class PlanningAgent:
             llm: Anthropic client instance
             file_manager: FileManager instance for file operations
         """
-        self.llm = llm
-        self.file_manager = file_manager
-        self.config = get_agent_config("planning")
-        self.model = get_model_name(self.config.get("model", "sonnet"))
+        # Initialize base agent (handles memory, LLM service, output manager)
+        super().__init__(llm, file_manager, agent_name="planning")
 
-        # Initialize agent intelligence components (NEW: Markdown-based memory system)
-        self.memory_manager = get_agent_memory_manager("planning")
-        self.knowledge_graph = get_knowledge_graph()
-
-    def _build_system_prompt(self, memories: Dict[str, str]) -> str:
+    def _execute(self, state: ResearchState) -> ResearchState:
         """
-        Build system prompt with persona and memory context.
+        Execute planning agent workflow (business logic only).
 
-        Args:
-            memories: Dictionary containing persona, memory, mistakes, and daily logs
-
-        Returns:
-            Complete system prompt string
-        """
-        return f"""# Your Identity and Persona
-
-{memories['persona']}
-
----
-
-# Your Long-term Knowledge and Insights
-
-{memories['memory']}
-
----
-
-# Mistakes to Avoid (IMPORTANT - Review Before Each Task)
-
-{memories['mistakes']}
-
----
-
-# Recent Context (Last 3 Days of Work)
-
-{memories['daily_recent']}
-
----
-
-You are now executing a new task. Use your persona, knowledge, and past learnings to perform at your best. Avoid repeating past mistakes.
-"""
-
-    def __call__(self, state: ResearchState) -> ResearchState:
-        """
-        Execute planning agent workflow.
+        All infrastructure (memory loading, logging, etc.) handled by BaseAgent.
 
         Args:
             state: Current research state
@@ -107,36 +67,25 @@ You are now executing a new task. Use your persona, knowledge, and past learning
         Returns:
             Updated research state with planning outputs
         """
-        print(f"\n{'='*60}")
-        print(f"Planning Agent: Designing experiment")
-        print(f"{'='*60}\n")
-
-        # Update status
-        state["status"] = "planning"
-
-        # Load all memories (persona, memory, mistakes, daily logs)
-        print("🧠 Loading agent memories...")
-        self.memories = self.memory_manager.load_all_memories()
-        self.system_prompt = self._build_system_prompt(self.memories)
-        print(f"✓ Loaded persona, long-term memory, mistakes registry, and recent daily logs")
+        self.logger.info(f"Hypothesis: {state['hypothesis'][:100]}...")
 
         # Consult knowledge graph for related strategies and methodologies
         hypothesis_keywords = state["hypothesis"][:100].lower()
-        related_strategies = self.knowledge_graph.search_knowledge(
+        related_strategies = self.intelligence.knowledge_graph.search_knowledge(
             query=hypothesis_keywords,
             node_type="strategy"
         )
 
-        related_metrics = self.knowledge_graph.search_knowledge(
+        related_metrics = self.intelligence.knowledge_graph.search_knowledge(
             query="performance metrics",
             node_type="metric"
         )
 
         if related_strategies:
-            print(f"✓ Found {len(related_strategies)} related strategies in knowledge graph")
+            self.logger.info(f"✓ Found {len(related_strategies)} related strategies in knowledge graph")
 
         if related_metrics:
-            print(f"✓ Found {len(related_metrics)} relevant metrics")
+            self.logger.info(f"✓ Found {len(related_metrics)} relevant metrics")
 
         # Step 1: Design experiment plan
         experiment_plan = self.design_experiment(
@@ -147,15 +96,16 @@ You are now executing a new task. Use your persona, knowledge, and past learning
         )
         state["experiment_plan"] = experiment_plan
 
-        print(f"✓ Created experiment plan")
-        print(f"  Objective: {experiment_plan['objective'][:100]}...")
+        self.logger.info(f"✓ Created experiment plan")
+        self.logger.info(f"  Objective: {experiment_plan['objective'][:100]}...")
 
-        # Save plan
-        self.file_manager.save_json(
-            data=experiment_plan,
+        # Save plan using BaseAgent's save_artifact
+        self.save_artifact(
+            content=experiment_plan,
             project_id=state["project_id"],
             filename="experiment_plan_v1.json",
-            subdir="experiments"
+            subdir="experiments",
+            format="json"
         )
 
         # Step 2: Generate detailed methodology
@@ -165,7 +115,7 @@ You are now executing a new task. Use your persona, knowledge, and past learning
         )
         state["methodology"] = methodology
 
-        print(f"✓ Generated detailed methodology")
+        self.logger.info(f"✓ Generated detailed methodology")
 
         # Step 3: Define expected outcomes
         expected_outcomes = self.define_expected_outcomes(
@@ -174,19 +124,19 @@ You are now executing a new task. Use your persona, knowledge, and past learning
         )
         state["expected_outcomes"] = expected_outcomes
 
-        print(f"✓ Defined success criteria and expected outcomes")
+        self.logger.info(f"✓ Defined success criteria and expected outcomes")
 
         # Step 4: Specify resource requirements
         resource_requirements = self.specify_resources(experiment_plan)
         state["resource_requirements"] = resource_requirements
 
-        print(f"✓ Specified resource requirements")
+        self.logger.info(f"✓ Specified resource requirements")
 
         # Step 5: Validate feasibility
         is_feasible, feasibility_notes = self.validate_feasibility(experiment_plan)
 
         if not is_feasible:
-            print(f"\n⚠ Feasibility concerns: {feasibility_notes}")
+            self.logger.warning(f"Feasibility concerns: {feasibility_notes}")
             state["error_log"] = f"Feasibility concerns: {feasibility_notes}"
 
         # Save complete planning documentation
@@ -225,65 +175,13 @@ You are now executing a new task. Use your persona, knowledge, and past learning
 {experiment_plan['estimated_runtime']}
 """
 
-        self.file_manager.save_text(
+        self.save_artifact(
             content=planning_doc,
             project_id=state["project_id"],
             filename="planning_document.md",
-            subdir="experiments"
+            subdir="experiments",
+            format="markdown"
         )
-
-        print(f"\n{'='*60}")
-        print(f"Planning Agent: Completed")
-        print(f"{'='*60}\n")
-
-        # Save daily log with execution details
-        execution_log = f"""## Experiment Planning Execution
-
-### Hypothesis
-{state["hypothesis"][:300]}...
-
-### Experiment Plan Designed
-- Methodology: {experiment_plan['methodology']}
-- Implementation Steps: {len(experiment_plan["implementation_steps"])}
-- Success Criteria Defined: {len(experiment_plan["success_criteria"])}
-- Feasibility: {'Feasible' if is_feasible else 'Needs Review'}
-
-### Key Components
-- Data Requirements: {experiment_plan.get('data_requirements', 'Specified')}
-- Backtesting Approach: {experiment_plan.get('backtesting_approach', 'Defined')}
-- Risk Factors: {len(experiment_plan.get('risk_factors', []))} identified
-"""
-
-        learnings = [
-            f"Successfully designed {len(experiment_plan['implementation_steps'])}-step experiment plan",
-            f"Methodology: {experiment_plan['methodology']}",
-            f"Plan feasibility: {'Validated' if is_feasible else 'Requires adjustments'}"
-        ]
-
-        mistakes_encountered = []  # Track if any issues occurred
-
-        reflection_text = f"""
-## Reflection on Execution
-
-### What Went Well
-- Comprehensive experiment plan created with {len(experiment_plan['implementation_steps'])} clear steps
-- Success criteria well-defined: {', '.join(experiment_plan['success_criteria'].keys())}
-- Feasibility assessment: {'Plan is executable' if is_feasible else 'Identified concerns'}
-
-### Areas for Improvement
-- Consider edge cases in implementation
-- Validate data requirements with Experiment Agent
-"""
-
-        self.memory_manager.save_daily_log(
-            project_id=state["project_id"],
-            execution_log=execution_log,
-            learnings=learnings,
-            mistakes=mistakes_encountered,
-            reflection=reflection_text
-        )
-
-        print(f"✓ Daily log saved with planning details and learnings")
 
         # Update knowledge graph with plan insights
         findings = [
@@ -291,13 +189,66 @@ You are now executing a new task. Use your persona, knowledge, and past learning
             f"Approach validated for: {state['research_direction']}"
         ]
 
-        self.knowledge_graph.update_knowledge_from_research(
+        self.intelligence.knowledge_graph.update_knowledge_from_research(
             project_id=state["project_id"],
             findings=findings,
             llm=self.llm
         )
 
         return state
+
+    def _generate_execution_summary(self, state: ResearchState) -> Dict[str, Any]:
+        """
+        Generate execution summary for daily log.
+
+        Overrides base class to provide agent-specific summary.
+
+        Args:
+            state: Current research state
+
+        Returns:
+            Execution summary dict
+        """
+        experiment_plan = state.get("experiment_plan", {})
+        methodology = state.get("methodology", "")
+
+        execution_log = f"""## Experiment Planning Execution
+
+### Hypothesis
+{state.get("hypothesis", "")[:300]}...
+
+### Experiment Plan Designed
+- Methodology: {experiment_plan.get('methodology', 'N/A')}
+- Implementation Steps: {len(experiment_plan.get("implementation_steps", []))}
+- Success Criteria Defined: {len(experiment_plan.get("success_criteria", {}))}
+
+### Key Components
+- Data Requirements: {experiment_plan.get('data_requirements', 'Specified')}
+- Risk Factors: {len(experiment_plan.get('risk_factors', []))} identified
+"""
+
+        learnings = [
+            f"Successfully designed {len(experiment_plan.get('implementation_steps', []))}-step experiment plan",
+            f"Methodology: {experiment_plan.get('methodology', 'N/A')}",
+        ]
+
+        reflection_text = f"""## Reflection on Execution
+
+### What Went Well
+- Comprehensive experiment plan created with {len(experiment_plan.get('implementation_steps', []))} clear steps
+- Success criteria well-defined: {', '.join(experiment_plan.get('success_criteria', {}).keys()) if experiment_plan.get('success_criteria') else 'N/A'}
+
+### Areas for Improvement
+- Consider edge cases in implementation
+- Validate data requirements with Experiment Agent
+"""
+
+        return {
+            "log": execution_log,
+            "learnings": learnings,
+            "mistakes": [],
+            "reflection": reflection_text
+        }
 
     def design_experiment(
         self,
@@ -348,28 +299,20 @@ Output as valid JSON matching this structure:
 
 Be specific about technical details for implementing a quantitative trading strategy."""
 
-        response = self.llm.messages.create(
-            model=self.model,
-            max_tokens=3000,
-            temperature=self.config.get("temperature", 0.3),
-            system=self.system_prompt,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        content = response.content[0].text
-
-        # Parse JSON from response
         try:
-            if "```json" in content:
-                json_str = content.split("```json")[1].split("```")[0].strip()
-            elif "{" in content:
-                json_str = content[content.find("{"):content.rfind("}")+1]
+            response = self.call_llm(
+                prompt=prompt,
+                max_tokens=3000,
+                temperature=self.config.get("temperature", 0.3),
+                response_format="json"
+            )
+
+            # Response is already parsed JSON from call_llm with response_format="json"
+            if isinstance(response, dict):
+                plan_data = response
             else:
-                json_str = content
+                plan_data = {}
 
-            plan_data = json.loads(json_str)
-
-            # Ensure all required fields
             return ExperimentPlan(
                 objective=plan_data.get("objective", ""),
                 methodology=plan_data.get("methodology", ""),
@@ -381,7 +324,7 @@ Be specific about technical details for implementing a quantitative trading stra
             )
 
         except Exception as e:
-            print(f"Error parsing experiment plan: {e}")
+            self.logger.error(f"Error parsing experiment plan: {e}")
             # Return default plan
             return ExperimentPlan(
                 objective="Test hypothesis through backtesting",
@@ -433,15 +376,11 @@ Write a detailed methodology section (300-500 words) that explains:
 
 Use formal academic language appropriate for a finance research paper."""
 
-        response = self.llm.messages.create(
-            model=self.model,
+        return self.call_llm(
+            prompt=prompt,
             max_tokens=2000,
-            temperature=self.config.get("temperature", 0.3),
-            system=self.system_prompt,
-            messages=[{"role": "user", "content": prompt}]
+            temperature=self.config.get("temperature", 0.3)
         )
-
-        return response.content[0].text
 
     def define_expected_outcomes(
         self,
@@ -476,15 +415,11 @@ Describe:
 
 Write 200-300 words."""
 
-        response = self.llm.messages.create(
-            model=self.model,
+        return self.call_llm(
+            prompt=prompt,
             max_tokens=1500,
-            temperature=self.config.get("temperature", 0.3),
-            system=self.system_prompt,
-            messages=[{"role": "user", "content": prompt}]
+            temperature=self.config.get("temperature", 0.3)
         )
-
-        return response.content[0].text
 
     def specify_resources(self, experiment_plan: ExperimentPlan) -> Dict[str, str]:
         """

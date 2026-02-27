@@ -28,4 +28,5 @@
 
 ## 更新历史
 
+- 2026-02-28: 修复intelligence_context.py中错误的import路径(core.memory.agent_memory_manager → core.agent_memory_manager)
 - 2026-02-27: 创建此文档,记录当前架构

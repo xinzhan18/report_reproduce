@@ -11,9 +11,9 @@ Manages:
 # ============================================================================
 # 文件头注释 (File Header)
 # INPUT:  外部依赖 - typing (类型系统), logging (日志), pathlib (路径),
-#                   core/agent_memory_manager (记忆管理),
-#                   core/knowledge_graph (知识图谱),
-#                   core/state (ResearchState)
+#                   core.agent_memory_manager (记忆管理),
+#                   core.knowledge_graph (知识图谱),
+#                   core.state (ResearchState)
 # OUTPUT: 对外提供 - IntelligenceContext类,提供get_system_prompt()、
 #                   save_execution_log()等方法,统一管理Agent智能上下文
 # POSITION: 系统地位 - Agent/Service (智能体层-服务)
@@ -26,7 +26,7 @@ from typing import Dict, Any, List, Optional
 import logging
 from pathlib import Path
 
-from core.memory.agent_memory_manager import get_agent_memory_manager
+from core.agent_memory_manager import get_agent_memory_manager
 from core.knowledge_graph import get_knowledge_graph
 from core.state import ResearchState
 

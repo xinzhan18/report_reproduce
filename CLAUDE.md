@@ -9,6 +9,10 @@ This file provides guidance to Claude Code when working with code in this reposi
 This system automates quantitative finance research from literature review through experiment execution to report generation using four specialized AI agents working in a pipeline.
 
 
+## 开发规范
+
+1. 任何情况下不要兼容旧代码 直接做完整的修改 不要做兼容
+
 ---
 
 ## 全局架构地图 (Global Architecture Map)

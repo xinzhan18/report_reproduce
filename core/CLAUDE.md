@@ -20,7 +20,7 @@
 
 ### agent_memory_manager.py
 - **角色**: Agent记忆管理器 (Memory Manager)
-- **功能**: 管理Agent的短期/长期记忆,支持记忆检索、更新、遗忘机制
+- **功能**: 管理Agent的Markdown记忆系统(persona/memory/daily/mistakes),默认路径从`data/agents/`迁移至`data/`,支持向后兼容
 
 ### document_memory_manager.py
 - **角色**: 文档记忆管理器 (Document Memory)
@@ -68,4 +68,5 @@
 
 ## 更新历史
 
+- 2026-02-28: agent_memory_manager.py默认路径从data/agents/迁移至data/,添加向后兼容和migrate_to_new_path()方法
 - 2026-02-27: 创建此文档,记录当前架构

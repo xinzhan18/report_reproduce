@@ -1,5 +1,8 @@
 """
-Writing Agent - Research report generation.
+Writing Agent - Research report generation (REFACTORED)
+
+Refactored to inherit from BaseAgent, eliminating infrastructure duplication.
+Now focuses purely on business logic.
 
 Responsible for:
 - Integrating outputs from all previous agents
@@ -10,17 +13,15 @@ Responsible for:
 
 # ============================================================================
 # 文件头注释 (File Header)
-# INPUT:  外部依赖 - typing (类型系统), anthropic (Anthropic客户端),
-#                   core/state (ResearchState状态),
-#                   tools/file_manager (文件管理),
-#                   config/agent_config (Agent配置),
-#                   config/llm_config (模型名称),
-#                   core/agent_memory_manager (记忆管理),
-#                   core/knowledge_graph (知识图谱),
+# INPUT:  外部依赖 - agents/base_agent (BaseAgent基类继承),
+#                   typing (类型系统), anthropic (Anthropic客户端),
+#                   core/state (ResearchState),
+#                   tools/file_manager (FileManager文件管理),
 #                   datetime (时间戳)
-# OUTPUT: 对外提供 - WritingAgent类,实现execute()方法,
-#                   输出完整研究报告(Markdown格式)
+# OUTPUT: 对外提供 - WritingAgent类,继承自BaseAgent,
+#                   实现_execute()方法,输出完整研究报告(Markdown格式)
 # POSITION: 系统地位 - Agent/Writing (智能体层-写作智能体)
+#                     继承BaseAgent,消除基础设施重复代码,
 #                     Pipeline第四阶段,整合所有结果生成最终报告
 #
 # 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
@@ -28,20 +29,20 @@ Responsible for:
 
 from typing import Dict, Any
 from anthropic import Anthropic
+
+from agents.base_agent import BaseAgent
 from core.state import ResearchState
 from tools.file_manager import FileManager
-from config.agent_config import get_agent_config
-from config.llm_config import get_model_name
-from core.agent_memory_manager import get_agent_memory_manager
-from core.knowledge_graph import get_knowledge_graph
 import json
 from datetime import datetime
 
 
-class WritingAgent:
+class WritingAgent(BaseAgent):
     """
     Agent responsible for report generation and documentation.
-    Enhanced with persona, self-reflection, and knowledge graph capabilities.
+
+    Refactored to use BaseAgent for infrastructure.
+    All memory, LLM calling, and output management handled by base class.
     """
 
     def __init__(self, llm: Anthropic, file_manager: FileManager):
@@ -52,55 +53,14 @@ class WritingAgent:
             llm: Anthropic client instance
             file_manager: FileManager instance for file operations
         """
-        self.llm = llm
-        self.file_manager = file_manager
-        self.config = get_agent_config("writing")
-        self.model = get_model_name(self.config.get("model", "sonnet"))
+        # Initialize base agent (handles memory, LLM service, output manager)
+        super().__init__(llm, file_manager, agent_name="writing")
 
-        # Initialize agent intelligence components (NEW: Markdown-based memory system)
-        self.memory_manager = get_agent_memory_manager("writing")
-        self.knowledge_graph = get_knowledge_graph()
-
-    def _build_system_prompt(self, memories: Dict[str, str]) -> str:
+    def _execute(self, state: ResearchState) -> ResearchState:
         """
-        Build system prompt with persona and memory context.
+        Execute writing agent workflow (business logic only).
 
-        Args:
-            memories: Dictionary containing persona, memory, mistakes, and daily logs
-
-        Returns:
-            Complete system prompt string
-        """
-        return f"""# Your Identity and Persona
-
-{memories['persona']}
-
----
-
-# Your Long-term Knowledge and Insights
-
-{memories['memory']}
-
----
-
-# Mistakes to Avoid (IMPORTANT - Review Before Each Task)
-
-{memories['mistakes']}
-
----
-
-# Recent Context (Last 3 Days of Work)
-
-{memories['daily_recent']}
-
----
-
-You are now executing a new task. Use your persona, knowledge, and past learnings to perform at your best. Avoid repeating past mistakes.
-"""
-
-    def __call__(self, state: ResearchState) -> ResearchState:
-        """
-        Execute writing agent workflow.
+        All infrastructure (memory loading, logging, etc.) handled by BaseAgent.
 
         Args:
             state: Current research state
@@ -108,31 +68,18 @@ You are now executing a new task. Use your persona, knowledge, and past learning
         Returns:
             Updated research state with report outputs
         """
-        print(f"\n{'='*60}")
-        print(f"Writing Agent: Generating research report")
-        print(f"{'='*60}\n")
-
-        # Update status
-        state["status"] = "writing"
-
-        # Load all memories (persona, memory, mistakes, daily logs)
-        print("🧠 Loading agent memories...")
-        self.memories = self.memory_manager.load_all_memories()
-        self.system_prompt = self._build_system_prompt(self.memories)
-        print(f"✓ Loaded persona, long-term memory, mistakes registry, and recent daily logs")
-
         # Step 1: Create report structure
-        print("Creating report structure...")
+        self.logger.info("Creating report structure...")
         structure = self.create_report_structure(state)
 
-        print(f"✓ Structured report with {len(structure)} sections")
+        self.logger.info(f"✓ Structured report with {len(structure)} sections")
 
         # Step 2: Generate each section
-        print("\nGenerating report sections...")
+        self.logger.info("Generating report sections...")
         sections = {}
 
         for section_name, section_config in structure.items():
-            print(f"  - {section_name}...")
+            self.logger.info(f"  - {section_name}...")
             content = self.generate_section(
                 section_name=section_name,
                 section_config=section_config,
@@ -140,72 +87,76 @@ You are now executing a new task. Use your persona, knowledge, and past learning
             )
             sections[section_name] = content
 
-        print(f"✓ Generated all sections")
+        self.logger.info(f"✓ Generated all sections")
 
         # Step 3: Assemble full report
-        print("\nAssembling final report...")
+        self.logger.info("Assembling final report...")
         report_draft = self.assemble_report(sections, state)
         state["report_draft"] = report_draft
 
         # Step 4: Polish and format
-        print("Polishing report...")
+        self.logger.info("Polishing report...")
         final_report = self.polish_report(report_draft, state)
         state["final_report"] = final_report
 
-        print(f"✓ Report completed ({len(final_report)} characters)")
+        self.logger.info(f"✓ Report completed ({len(final_report)} characters)")
 
         # Step 5: Save report
-        report_path = self.file_manager.save_text(
+        self.save_artifact(
             content=final_report,
             project_id=state["project_id"],
             filename="final_report.md",
-            subdir="reports"
+            subdir="reports",
+            format="markdown"
         )
-        state["report_path"] = str(report_path)
 
         # Also save as HTML-friendly version
-        self.file_manager.save_text(
+        self.save_artifact(
             content=self.convert_to_html_friendly(final_report),
             project_id=state["project_id"],
             filename="final_report_formatted.md",
-            subdir="reports"
+            subdir="reports",
+            format="markdown"
         )
 
         # Mark for human review
         state["requires_human_review"] = True
 
-        print(f"\n✓ Report saved to: {report_path}")
+        # Update final status
+        state["status"] = "completed"
 
-        print(f"\n{'='*60}")
-        print(f"Writing Agent: Completed")
-        print(f"{'='*60}\n")
+        return state
 
-        # Save daily log with execution details
+    def _generate_execution_summary(self, state: ResearchState) -> Dict[str, Any]:
+        """
+        Generate execution summary for daily log.
+
+        Overrides base class to provide agent-specific summary.
+
+        Args:
+            state: Current research state
+
+        Returns:
+            Execution summary dict
+        """
+        report_draft = state.get("report_draft", "")
+        final_report = state.get("final_report", "")
+
         execution_log = f"""## Research Report Writing
-
-### Report Structure
-- Sections generated: {len(sections)}
-- Section names: {', '.join(sections.keys())}
 
 ### Report Metrics
 - Draft length: {len(report_draft)} characters
 - Final report length: {len(final_report)} characters
 - Improvement: {len(final_report) - len(report_draft)} characters added in polishing
-
-### Sections Included
-{chr(10).join(f'- {name}: {len(content)} chars' for name, content in sections.items())}
 """
 
         learnings = [
-            f"Successfully generated {len(sections)}-section research report",
+            f"Successfully generated research report",
             f"Report integrates findings from all previous agents",
             f"Final length: {len(final_report)} characters"
         ]
 
-        mistakes_encountered = []  # Track if any issues occurred
-
-        reflection_text = f"""
-## Reflection on Execution
+        reflection_text = f"""## Reflection on Execution
 
 ### What Went Well
 - Comprehensive report structure created
@@ -219,20 +170,12 @@ You are now executing a new task. Use your persona, knowledge, and past learning
 - Add more context for future research directions
 """
 
-        self.memory_manager.save_daily_log(
-            project_id=state["project_id"],
-            execution_log=execution_log,
-            learnings=learnings,
-            mistakes=mistakes_encountered,
-            reflection=reflection_text
-        )
-
-        print(f"✓ Daily log saved with report generation details and learnings")
-
-        # Update final status
-        state["status"] = "completed"
-
-        return state
+        return {
+            "log": execution_log,
+            "learnings": learnings,
+            "mistakes": [],
+            "reflection": reflection_text
+        }
 
     def create_report_structure(self, state: ResearchState) -> Dict[str, Dict[str, Any]]:
         """
@@ -313,15 +256,11 @@ Requirements for this section:
 
 Write a well-structured {section_name} section for this research paper."""
 
-        response = self.llm.messages.create(
-            model=self.model,
+        return self.call_llm(
+            prompt=prompt,
             max_tokens=2000,
-            temperature=self.config.get("temperature", 0.4),
-            system=self.system_prompt,
-            messages=[{"role": "user", "content": prompt}]
+            temperature=self.config.get("temperature", 0.4)
         )
-
-        return response.content[0].text
 
     def _build_section_context(self, section_name: str, state: ResearchState) -> str:
         """Build context information for a specific section."""
@@ -489,15 +428,11 @@ Tasks:
 
 Output the complete polished report. Maintain all sections and content, just improve the quality."""
 
-        response = self.llm.messages.create(
-            model=self.model,
+        return self.call_llm(
+            prompt=prompt,
             max_tokens=8000,
-            temperature=0.3,
-            system=self.system_prompt,
-            messages=[{"role": "user", "content": prompt}]
+            temperature=0.3
         )
-
-        return response.content[0].text
 
     def convert_to_html_friendly(self, markdown: str) -> str:
         """

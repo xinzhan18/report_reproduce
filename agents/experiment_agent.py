@@ -1,5 +1,8 @@
 """
-Experiment Agent - Code generation and backtest execution.
+Experiment Agent - Code generation and backtest execution (REFACTORED)
+
+Refactored to inherit from BaseAgent, eliminating infrastructure duplication.
+Now focuses purely on business logic.
 
 Responsible for:
 - Generating trading strategy code from experiment plans
@@ -10,17 +13,17 @@ Responsible for:
 
 # ============================================================================
 # 文件头注释 (File Header)
-# INPUT:  外部依赖 - typing (类型系统), anthropic (Anthropic客户端),
+# INPUT:  外部依赖 - agents/base_agent (BaseAgent基类继承),
+#                   typing (类型系统), anthropic (Anthropic客户端),
 #                   core/state (ResearchState, BacktestResults, ExperimentPlan),
-#                   tools/file_manager (文件管理),
-#                   tools/data_fetcher (金融数据获取),
-#                   tools/backtest_engine (回测引擎),
-#                   config/agent_config (Agent配置),
-#                   core/agent_memory_manager (记忆管理),
+#                   tools/file_manager (FileManager文件管理),
+#                   tools/data_fetcher (FinancialDataFetcher金融数据获取),
+#                   tools/backtest_engine (BacktestEngine回测引擎),
 #                   pandas (数据处理)
-# OUTPUT: 对外提供 - ExperimentAgent类,实现execute()方法,
-#                   输出策略代码、回测结果、性能指标
+# OUTPUT: 对外提供 - ExperimentAgent类,继承自BaseAgent,
+#                   实现_execute()方法,输出策略代码、回测结果、性能指标
 # POSITION: 系统地位 - Agent/Experiment (智能体层-实验智能体)
+#                     继承BaseAgent,消除基础设施重复代码,
 #                     Pipeline第三阶段,执行策略代码生成和回测
 #
 # 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
@@ -28,21 +31,21 @@ Responsible for:
 
 from typing import Dict, Any, Optional
 from anthropic import Anthropic
+
+from agents.base_agent import BaseAgent
 from core.state import ResearchState, BacktestResults, ExperimentPlan
 from tools.file_manager import FileManager
 from tools.data_fetcher import FinancialDataFetcher
 from tools.backtest_engine import BacktestEngine
-from config.agent_config import get_agent_config
-from config.llm_config import get_model_name
-from core.agent_memory_manager import get_agent_memory_manager
-from core.knowledge_graph import get_knowledge_graph
 import pandas as pd
 
 
-class ExperimentAgent:
+class ExperimentAgent(BaseAgent):
     """
     Agent responsible for experiment execution and validation.
-    Enhanced with persona, self-reflection, and knowledge graph capabilities.
+
+    Refactored to use BaseAgent for infrastructure.
+    All memory, LLM calling, and output management handled by base class.
     """
 
     def __init__(
@@ -61,57 +64,18 @@ class ExperimentAgent:
             data_fetcher: Financial data fetcher
             backtest_engine: Backtest engine
         """
-        self.llm = llm
-        self.file_manager = file_manager
+        # Initialize base agent (handles memory, LLM service, output manager)
+        super().__init__(llm, file_manager, agent_name="experiment")
+
+        # Agent-specific tools
         self.data_fetcher = data_fetcher
         self.backtest_engine = backtest_engine
-        self.config = get_agent_config("experiment")
-        self.model = get_model_name(self.config.get("model", "sonnet"))
 
-        # Initialize agent intelligence components (NEW: Markdown-based memory system)
-        self.memory_manager = get_agent_memory_manager("experiment")
-        self.knowledge_graph = get_knowledge_graph()
-
-    def _build_system_prompt(self, memories: Dict[str, str]) -> str:
+    def _execute(self, state: ResearchState) -> ResearchState:
         """
-        Build system prompt with persona and memory context.
+        Execute experiment agent workflow (business logic only).
 
-        Args:
-            memories: Dictionary containing persona, memory, mistakes, and daily logs
-
-        Returns:
-            Complete system prompt string
-        """
-        return f"""# Your Identity and Persona
-
-{memories['persona']}
-
----
-
-# Your Long-term Knowledge and Insights
-
-{memories['memory']}
-
----
-
-# Mistakes to Avoid (IMPORTANT - Review Before Each Task)
-
-{memories['mistakes']}
-
----
-
-# Recent Context (Last 3 Days of Work)
-
-{memories['daily_recent']}
-
----
-
-You are now executing a new task. Use your persona, knowledge, and past learnings to perform at your best. Avoid repeating past mistakes.
-"""
-
-    def __call__(self, state: ResearchState) -> ResearchState:
-        """
-        Execute experiment agent workflow.
+        All infrastructure (memory loading, logging, etc.) handled by BaseAgent.
 
         Args:
             state: Current research state
@@ -119,30 +83,17 @@ You are now executing a new task. Use your persona, knowledge, and past learning
         Returns:
             Updated research state with experiment outputs
         """
-        print(f"\n{'='*60}")
-        print(f"Experiment Agent: Executing backtest")
-        print(f"{'='*60}\n")
-
-        # Update status
-        state["status"] = "experiment"
-
-        # Load all memories (persona, memory, mistakes, daily logs)
-        print("🧠 Loading agent memories...")
-        self.memories = self.memory_manager.load_all_memories()
-        self.system_prompt = self._build_system_prompt(self.memories)
-        print(f"✓ Loaded persona, long-term memory, mistakes registry, and recent daily logs")
-
         # Consult knowledge graph for implementation patterns
-        related_tools = self.knowledge_graph.search_knowledge(
+        related_tools = self.intelligence.knowledge_graph.search_knowledge(
             query="indicator strategy",
             node_type="tool"
         )
 
         if related_tools:
-            print(f"✓ Found {len(related_tools)} relevant tools/indicators in knowledge graph")
+            self.logger.info(f"✓ Found {len(related_tools)} relevant tools/indicators in knowledge graph")
 
         # Step 1: Generate strategy code
-        print("Generating trading strategy code...")
+        self.logger.info("Generating trading strategy code...")
         strategy_code = self.generate_strategy_code(
             experiment_plan=state["experiment_plan"],
             hypothesis=state["hypothesis"],
@@ -150,30 +101,31 @@ You are now executing a new task. Use your persona, knowledge, and past learning
         )
         state["experiment_code"] = strategy_code
 
-        print(f"✓ Generated strategy code ({len(strategy_code)} characters)")
+        self.logger.info(f"✓ Generated strategy code ({len(strategy_code)} characters)")
 
         # Save code
-        self.file_manager.save_text(
+        self.save_artifact(
             content=strategy_code,
             project_id=state["project_id"],
             filename="strategy.py",
-            subdir="experiments"
+            subdir="experiments",
+            format="text"
         )
 
         # Step 2: Prepare data
-        print("\nFetching historical data...")
+        self.logger.info("Fetching historical data...")
         data = self.prepare_data(state["experiment_plan"])
 
         if data is None or data.empty:
             state["validation_status"] = "failed"
             state["error_messages"] = "Failed to fetch required data"
-            print("✗ Data fetch failed")
+            self.logger.error("Data fetch failed")
             return state
 
-        print(f"✓ Fetched {len(data)} data points")
+        self.logger.info(f"✓ Fetched {len(data)} data points")
 
         # Step 3: Execute backtest
-        print("\nRunning backtest...")
+        self.logger.info("Running backtest...")
         try:
             results = self.execute_backtest(strategy_code, data)
 
@@ -182,20 +134,20 @@ You are now executing a new task. Use your persona, knowledge, and past learning
                 state["execution_logs"] = results.get("execution_logs", "")
                 state["validation_status"] = "success"
 
-                print(f"✓ Backtest completed successfully")
-                print(f"  Total Return: {results.get('total_return', 0)*100:.2f}%")
-                print(f"  Sharpe Ratio: {results.get('sharpe_ratio', 0):.2f}")
-                print(f"  Max Drawdown: {results.get('max_drawdown', 0)*100:.2f}%")
+                self.logger.info(f"✓ Backtest completed successfully")
+                self.logger.info(f"  Total Return: {results.get('total_return', 0)*100:.2f}%")
+                self.logger.info(f"  Sharpe Ratio: {results.get('sharpe_ratio', 0):.2f}")
+                self.logger.info(f"  Max Drawdown: {results.get('max_drawdown', 0)*100:.2f}%")
 
             else:
                 state["validation_status"] = "failed"
                 state["error_messages"] = results.get("error", "Unknown error")
-                print(f"✗ Backtest failed: {results.get('error')}")
+                self.logger.error(f"Backtest failed: {results.get('error')}")
 
         except Exception as e:
             state["validation_status"] = "failed"
             state["error_messages"] = str(e)
-            print(f"✗ Execution error: {e}")
+            self.logger.error(f"Execution error: {e}")
 
         # Step 4: Validate results
         if state["validation_status"] == "success":
@@ -206,67 +158,89 @@ You are now executing a new task. Use your persona, knowledge, and past learning
 
             if not validation_passed:
                 state["validation_status"] = "partial"
-                print("\n⚠ Results did not meet all success criteria")
+                self.logger.warning("Results did not meet all success criteria")
 
         # Save results
         if state["validation_status"] in ["success", "partial"]:
-            self.file_manager.save_json(
-                data=dict(state["results_data"]),
+            self.save_artifact(
+                content=dict(state["results_data"]),
                 project_id=state["project_id"],
                 filename="backtest_results.json",
-                subdir="experiments"
+                subdir="experiments",
+                format="json"
             )
 
         # Save execution logs
-        self.file_manager.save_text(
+        self.save_artifact(
             content=state.get("execution_logs", ""),
             project_id=state["project_id"],
             filename="execution_logs.txt",
-            subdir="experiments"
+            subdir="experiments",
+            format="text"
         )
 
-        print(f"\n{'='*60}")
-        print(f"Experiment Agent: Completed ({state['validation_status']})")
-        print(f"{'='*60}\n")
+        # Record mistake if failed
+        if state["validation_status"] == "failed":
+            error_msg = state.get("error_messages", "Unknown")
+            self.intelligence.memory_manager.record_mistake(
+                mistake_id=f"M_EXP_{state['project_id'][:8]}",
+                description="Backtest execution failed",
+                severity=3,
+                root_cause=error_msg[:100],
+                prevention="Validate strategy code and data before execution",
+                project_id=state["project_id"]
+            )
 
-        # Self-reflection on experiment execution
-        execution_context = {
-            "strategy_generated": bool(strategy_code),
-            "data_fetched": data is not None,
-            "validation_status": state["validation_status"]
-        }
+        # Update knowledge graph with experiment insights
+        if state["validation_status"] in ["success", "partial"]:
+            findings = [
+                f"Strategy type validated: {state['experiment_plan']['methodology'][:100]}",
+                f"Performance metrics recorded"
+            ]
 
-        results = {
-            "success": state["validation_status"] == "success",
-            "code_length": len(strategy_code),
-            "data_points": len(data) if data is not None else 0,
-            "backtest_executed": "results_data" in state
-        }
+            self.intelligence.knowledge_graph.update_knowledge_from_research(
+                project_id=state["project_id"],
+                findings=findings,
+                llm=self.llm
+            )
 
-        if state["validation_status"] == "success":
-            results["sharpe_ratio"] = state["results_data"]["sharpe_ratio"]
-            results["total_return"] = state["results_data"]["total_return"]
+        return state
 
-        # Save daily log with execution details
-        execution_status = state["validation_status"]
+    def _generate_execution_summary(self, state: ResearchState) -> Dict[str, Any]:
+        """
+        Generate execution summary for daily log.
+
+        Overrides base class to provide agent-specific summary.
+
+        Args:
+            state: Current research state
+
+        Returns:
+            Execution summary dict
+        """
+        strategy_code = state.get("experiment_code", "")
+        execution_status = state.get("validation_status", "unknown")
+
         execution_log = f"""## Backtest Execution
 
 ### Status: {execution_status.upper()}
 
 ### Strategy Code
 - Code length: {len(strategy_code)} characters
-- Data points: {len(data) if data is not None else 0}
-
-### Results
 """
+
         if execution_status == "success":
-            execution_log += f"""- Sharpe Ratio: {state['results_data']['sharpe_ratio']:.2f}
+            execution_log += f"""
+### Results
+- Sharpe Ratio: {state['results_data']['sharpe_ratio']:.2f}
 - Total Return: {state['results_data']['total_return']*100:.2f}%
 - Max Drawdown: {state['results_data']['max_drawdown']*100:.2f}%
 - Win Rate: {state['results_data'].get('win_rate', 0)*100:.2f}%
 """
         else:
-            execution_log += f"""- Error: {state.get('error_messages', 'Unknown error')}
+            execution_log += f"""
+### Results
+- Error: {state.get('error_messages', 'Unknown error')}
 """
 
         learnings = []
@@ -279,8 +253,7 @@ You are now executing a new task. Use your persona, knowledge, and past learning
             mistakes_encountered.append(f"Backtest failed: {state.get('error_messages', 'Unknown')[:200]}")
             learnings.append("Need to review code generation and data preparation")
 
-        reflection_text = f"""
-## Reflection on Execution
+        reflection_text = f"""## Reflection on Execution
 
 ### What Went Well
 """
@@ -307,41 +280,12 @@ You are now executing a new task. Use your persona, knowledge, and past learning
 - Review strategy logic
 """
 
-        self.memory_manager.save_daily_log(
-            project_id=state["project_id"],
-            execution_log=execution_log,
-            learnings=learnings,
-            mistakes=mistakes_encountered,
-            reflection=reflection_text
-        )
-
-        print(f"✓ Daily log saved with backtest results and learnings")
-
-        # Record mistake if failed
-        if execution_status == "failed" and mistakes_encountered:
-            self.memory_manager.record_mistake(
-                mistake_id=f"M_EXP_{state['project_id'][:8]}",
-                description=f"Backtest execution failed",
-                severity=3,
-                root_cause=state.get('error_messages', 'Unknown')[:100],
-                prevention="Validate strategy code and data before execution",
-                project_id=state["project_id"]
-            )
-
-        # Update knowledge graph with experiment insights
-        if execution_status in ["success", "partial"]:
-            findings = [
-                f"Strategy type validated: {state['experiment_plan']['methodology'][:100]}",
-                f"Performance metrics recorded"
-            ]
-
-            self.knowledge_graph.update_knowledge_from_research(
-                project_id=state["project_id"],
-                findings=findings,
-                llm=self.llm
-            )
-
-        return state
+        return {
+            "log": execution_log,
+            "learnings": learnings,
+            "mistakes": mistakes_encountered,
+            "reflection": reflection_text
+        }
 
     def generate_strategy_code(
         self,
@@ -395,15 +339,11 @@ Requirements:
 
 Output ONLY the Python code, no explanations. The code will be executed directly."""
 
-        response = self.llm.messages.create(
-            model=self.model,
+        code = self.call_llm(
+            prompt=prompt,
             max_tokens=4000,
-            temperature=self.config.get("temperature", 0.2),
-            system=self.system_prompt,
-            messages=[{"role": "user", "content": prompt}]
+            temperature=self.config.get("temperature", 0.2)
         )
-
-        code = response.content[0].text
 
         # Extract code from markdown if present
         if "```python" in code:
@@ -452,7 +392,7 @@ Output ONLY the Python code, no explanations. The code will be executed directly
                     return df
 
         except Exception as e:
-            print(f"Error fetching data: {e}")
+            self.logger.error(f"Error fetching data: {e}")
 
         return None
 
@@ -539,15 +479,13 @@ Output ONLY the Python code, no explanations. The code will be executed directly
             Updated state after retry
         """
         if state["iteration"] >= max_retries:
-            print("Max retries reached")
+            self.logger.info("Max retries reached")
             return state
 
-        print(f"\nRetrying experiment (attempt {state['iteration'] + 1})...")
+        self.logger.info(f"Retrying experiment (attempt {state['iteration'] + 1})...")
 
         # Increment iteration
         state["iteration"] += 1
 
         # Re-run experiment with modifications
-        # (In a full implementation, you'd analyze the error and adjust the prompt)
-
         return self(state)

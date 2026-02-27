@@ -57,6 +57,8 @@ dmypy.json
 # Project specific
 data/agents/*/daily/*.md
 data/agents/*/oauth_token.json
+data/*/daily/*.md
+data/*/oauth_token.json
 data/auth/*.json
 data/literature/pdfs/
 outputs/*/
