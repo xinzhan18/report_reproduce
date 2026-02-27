@@ -14,6 +14,9 @@ from core.state import ResearchState
 from tools.file_manager import FileManager
 from config.agent_config import get_agent_config
 from config.llm_config import get_model_name
+from core.agent_persona import get_agent_persona
+from core.self_reflection import SelfReflectionEngine
+from core.knowledge_graph import get_knowledge_graph
 import json
 from datetime import datetime
 
@@ -21,6 +24,7 @@ from datetime import datetime
 class WritingAgent:
     """
     Agent responsible for report generation and documentation.
+    Enhanced with persona, self-reflection, and knowledge graph capabilities.
     """
 
     def __init__(self, llm: Anthropic, file_manager: FileManager):
@@ -35,6 +39,11 @@ class WritingAgent:
         self.file_manager = file_manager
         self.config = get_agent_config("writing")
         self.model = get_model_name(self.config.get("model", "sonnet"))
+
+        # Initialize agent intelligence components
+        self.persona = get_agent_persona("writing")
+        self.reflection_engine = SelfReflectionEngine("writing", llm)
+        self.knowledge_graph = get_knowledge_graph()
 
     def __call__(self, state: ResearchState) -> ResearchState:
         """
@@ -52,6 +61,19 @@ class WritingAgent:
 
         # Update status
         state["status"] = "writing"
+
+        # Recall past writing experiences
+        writing_memories = self.persona.recall_memories(
+            memory_type="experience",
+            limit=5
+        )
+
+        if writing_memories:
+            print(f"✓ Recalled {len(writing_memories)} past writing experiences")
+
+        # Get mistake prevention guide
+        mistake_guide = self.reflection_engine.get_mistake_prevention_guide()
+        print(f"\n📋 Reviewing past writing mistakes...")
 
         # Step 1: Create report structure
         print("Creating report structure...")
@@ -111,6 +133,54 @@ class WritingAgent:
         print(f"\n{'='*60}")
         print(f"Writing Agent: Completed")
         print(f"{'='*60}\n")
+
+        # Self-reflection on writing performance
+        execution_context = {
+            "sections_generated": len(sections),
+            "report_length": len(final_report),
+            "sections": list(sections.keys())
+        }
+
+        results = {
+            "report_completed": True,
+            "sections_count": len(sections),
+            "final_length": len(final_report),
+            "draft_length": len(report_draft)
+        }
+
+        reflection = self.reflection_engine.reflect_on_execution(
+            project_id=state["project_id"],
+            execution_context=execution_context,
+            results=results
+        )
+
+        print(f"✓ Self-reflection completed (performance: {reflection.get('performance_score', 5)}/10)")
+
+        # Record learning event
+        self.persona.record_learning_event(
+            event_type="success",
+            description=f"Generated comprehensive research report",
+            project_id=state["project_id"],
+            lessons_learned=[
+                f"Report contains {len(sections)} sections",
+                f"Final length: {len(final_report)} characters",
+                "Integrated all agent outputs successfully"
+            ],
+            impact_score=0.9
+        )
+
+        # Add memory of this writing session
+        self.persona.add_memory(
+            memory_type="experience",
+            content=f"Wrote report for: {state['hypothesis'][:100]}",
+            context=f"Project {state['project_id']}",
+            importance=0.8,
+            emotional_valence=1.0,
+            tags=["report", "writing", "completion"]
+        )
+
+        # Evolve expertise
+        self.persona.evolve_expertise()
 
         # Update final status
         state["status"] = "completed"

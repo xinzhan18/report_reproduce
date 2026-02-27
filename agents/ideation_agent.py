@@ -15,12 +15,17 @@ from tools.paper_fetcher import PaperFetcher
 from tools.file_manager import FileManager
 from config.agent_config import get_agent_config
 from config.llm_config import get_model_name
+from core.agent_persona import get_agent_persona
+from core.self_reflection import SelfReflectionEngine
+from core.knowledge_graph import get_knowledge_graph
+from tools.smart_literature_access import get_literature_access_manager
 import json
 
 
 class IdeationAgent:
     """
     Agent responsible for literature review and idea generation.
+    Enhanced with persona, self-reflection, and knowledge graph capabilities.
     """
 
     def __init__(self, llm: Anthropic, paper_fetcher: PaperFetcher, file_manager: FileManager):
@@ -37,6 +42,12 @@ class IdeationAgent:
         self.file_manager = file_manager
         self.config = get_agent_config("ideation")
         self.model = get_model_name(self.config.get("model", "sonnet"))
+
+        # Initialize agent intelligence components
+        self.persona = get_agent_persona("ideation")
+        self.reflection_engine = SelfReflectionEngine("ideation", llm)
+        self.knowledge_graph = get_knowledge_graph()
+        self.literature_access = get_literature_access_manager()
 
     def __call__(self, state: ResearchState) -> ResearchState:
         """
@@ -55,6 +66,31 @@ class IdeationAgent:
 
         # Update status
         state["status"] = "ideation"
+
+        # Consult knowledge graph for related concepts
+        related_knowledge = self.knowledge_graph.search_knowledge(
+            query=state["research_direction"],
+            node_type=None
+        )
+
+        if related_knowledge:
+            print(f"✓ Found {len(related_knowledge)} related concepts in knowledge graph")
+            for knowledge in related_knowledge[:3]:
+                print(f"  - {knowledge['name']}: {knowledge['description'][:80]}...")
+
+        # Recall past learnings
+        recent_memories = self.persona.recall_memories(
+            memory_type="insight",
+            limit=5
+        )
+
+        if recent_memories:
+            print(f"✓ Recalled {len(recent_memories)} past insights")
+
+        # Get mistake prevention guide
+        mistake_guide = self.reflection_engine.get_mistake_prevention_guide()
+        print(f"\n📋 Reviewing past mistakes to avoid repetition...")
+        print(mistake_guide[:300] + "..." if len(mistake_guide) > 300 else mistake_guide)
 
         # Step 1: Scan and fetch papers
         papers = self.scan_papers(state["research_direction"])
@@ -119,6 +155,49 @@ class IdeationAgent:
         print(f"\n{'='*60}")
         print(f"Ideation Agent: Completed")
         print(f"{'='*60}\n")
+
+        # Self-reflection on performance
+        execution_context = {
+            "research_direction": state["research_direction"],
+            "papers_found": len(papers),
+            "gaps_identified": len(research_gaps)
+        }
+
+        results = {
+            "papers_reviewed": len(papers),
+            "literature_summary_length": len(literature_summary),
+            "research_gaps": len(research_gaps),
+            "hypothesis_generated": bool(hypothesis)
+        }
+
+        reflection = self.reflection_engine.reflect_on_execution(
+            project_id=state["project_id"],
+            execution_context=execution_context,
+            results=results
+        )
+
+        print(f"✓ Self-reflection completed (performance: {reflection.get('performance_score', 5)}/10)")
+
+        # Record learning event
+        self.persona.record_learning_event(
+            event_type="success",
+            description=f"Completed literature review for {state['research_direction']}",
+            project_id=state["project_id"],
+            lessons_learned=[f"Reviewed {len(papers)} papers", f"Identified {len(research_gaps)} gaps"],
+            impact_score=0.7
+        )
+
+        # Update knowledge graph with new insights
+        if research_gaps:
+            findings = [f"Research gap: {gap}" for gap in research_gaps[:3]]
+            self.knowledge_graph.update_knowledge_from_research(
+                project_id=state["project_id"],
+                findings=findings,
+                llm=self.llm
+            )
+
+        # Evolve expertise
+        self.persona.evolve_expertise()
 
         return state
 

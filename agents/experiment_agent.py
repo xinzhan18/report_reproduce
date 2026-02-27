@@ -16,12 +16,16 @@ from tools.data_fetcher import FinancialDataFetcher
 from tools.backtest_engine import BacktestEngine
 from config.agent_config import get_agent_config
 from config.llm_config import get_model_name
+from core.agent_persona import get_agent_persona
+from core.self_reflection import SelfReflectionEngine
+from core.knowledge_graph import get_knowledge_graph
 import pandas as pd
 
 
 class ExperimentAgent:
     """
     Agent responsible for experiment execution and validation.
+    Enhanced with persona, self-reflection, and knowledge graph capabilities.
     """
 
     def __init__(
@@ -47,6 +51,11 @@ class ExperimentAgent:
         self.config = get_agent_config("experiment")
         self.model = get_model_name(self.config.get("model", "sonnet"))
 
+        # Initialize agent intelligence components
+        self.persona = get_agent_persona("experiment")
+        self.reflection_engine = SelfReflectionEngine("experiment", llm)
+        self.knowledge_graph = get_knowledge_graph()
+
     def __call__(self, state: ResearchState) -> ResearchState:
         """
         Execute experiment agent workflow.
@@ -63,6 +72,28 @@ class ExperimentAgent:
 
         # Update status
         state["status"] = "experiment"
+
+        # Consult knowledge graph for implementation patterns
+        related_tools = self.knowledge_graph.search_knowledge(
+            query="indicator strategy",
+            node_type="tool"
+        )
+
+        if related_tools:
+            print(f"✓ Found {len(related_tools)} relevant tools/indicators in knowledge graph")
+
+        # Recall past experiment experiences
+        experiment_memories = self.persona.recall_memories(
+            memory_type="experience",
+            limit=5
+        )
+
+        if experiment_memories:
+            print(f"✓ Recalled {len(experiment_memories)} past experiment experiences")
+
+        # Get mistake prevention guide
+        mistake_guide = self.reflection_engine.get_mistake_prevention_guide()
+        print(f"\n📋 Reviewing past experiment mistakes...")
 
         # Step 1: Generate strategy code
         print("Generating trading strategy code...")
@@ -151,6 +182,78 @@ class ExperimentAgent:
         print(f"\n{'='*60}")
         print(f"Experiment Agent: Completed ({state['validation_status']})")
         print(f"{'='*60}\n")
+
+        # Self-reflection on experiment execution
+        execution_context = {
+            "strategy_generated": bool(strategy_code),
+            "data_fetched": data is not None,
+            "validation_status": state["validation_status"]
+        }
+
+        results = {
+            "success": state["validation_status"] == "success",
+            "code_length": len(strategy_code),
+            "data_points": len(data) if data is not None else 0,
+            "backtest_executed": "results_data" in state
+        }
+
+        if state["validation_status"] == "success":
+            results["sharpe_ratio"] = state["results_data"]["sharpe_ratio"]
+            results["total_return"] = state["results_data"]["total_return"]
+
+        reflection = self.reflection_engine.reflect_on_execution(
+            project_id=state["project_id"],
+            execution_context=execution_context,
+            results=results
+        )
+
+        print(f"✓ Self-reflection completed (performance: {reflection.get('performance_score', 5)}/10)")
+
+        # Record learning event
+        event_type = "success" if state["validation_status"] == "success" else "failure"
+        lessons = []
+
+        if state["validation_status"] == "success":
+            lessons.append(f"Strategy achieved Sharpe ratio: {state['results_data']['sharpe_ratio']:.2f}")
+            lessons.append(f"Total return: {state['results_data']['total_return']*100:.2f}%")
+        else:
+            lessons.append(f"Failure reason: {state.get('error_messages', 'Unknown')}")
+
+        self.persona.record_learning_event(
+            event_type=event_type,
+            description=f"Executed backtest experiment",
+            project_id=state["project_id"],
+            lessons_learned=lessons,
+            impact_score=0.9 if event_type == "success" else 0.3
+        )
+
+        # Record mistakes if failed
+        if state["validation_status"] == "failed" and state.get("error_messages"):
+            self.reflection_engine.record_mistake(
+                mistake_type="execution",
+                description=f"Backtest failed: {state['error_messages'][:200]}",
+                context=str(execution_context),
+                root_cause="Code generation or data issues",
+                correction="Review and regenerate strategy code",
+                severity=3,
+                project_id=state["project_id"]
+            )
+
+        # Update knowledge graph with experiment insights
+        if state["validation_status"] in ["success", "partial"]:
+            findings = [
+                f"Strategy type validated: {state['experiment_plan']['methodology'][:100]}",
+                f"Performance metrics recorded"
+            ]
+
+            self.knowledge_graph.update_knowledge_from_research(
+                project_id=state["project_id"],
+                findings=findings,
+                llm=self.llm
+            )
+
+        # Evolve expertise
+        self.persona.evolve_expertise()
 
         return state
 
