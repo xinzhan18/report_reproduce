@@ -4,7 +4,8 @@ State management for the research automation system.
 Defines the ResearchState TypedDict that flows through the entire pipeline.
 """
 
-from typing import TypedDict, List, Dict, Optional, Literal
+from typing import TypedDict, List, Dict, Optional, Literal, Any
+from dataclasses import dataclass, field
 from datetime import datetime
 
 
@@ -44,6 +45,116 @@ class BacktestResults(TypedDict):
     total_trades: int
     avg_trade_duration: float
     volatility: float
+
+
+# ============= Enhanced Literature Analysis Structures =============
+
+@dataclass
+class RankedPaper:
+    """
+    Paper with relevance ranking from quick filtering stage.
+
+    Used in Stage 1 of three-stage analysis.
+    """
+    paper: PaperMetadata
+    relevance_score: float  # 0.0 to 1.0
+    relevance_reasons: List[str]
+    should_analyze_deep: bool = field(default=False)
+
+
+@dataclass
+class StructuredInsights:
+    """
+    Structured analysis results from paper sections.
+
+    Used in Stage 2 of three-stage analysis.
+    Extracted from PDF sections (methodology, results, etc.)
+    """
+    paper_id: str
+    title: str
+    sections: Dict[str, str]  # section_name -> extracted_text
+
+    # Structured extracted information
+    key_innovations: List[str] = field(default_factory=list)
+    methodology_summary: str = ""
+    performance_metrics: Dict[str, float] = field(default_factory=dict)
+    limitations: List[str] = field(default_factory=list)
+    research_gaps_mentioned: List[str] = field(default_factory=list)
+
+    # Quality scores
+    innovation_score: float = 0.0  # 0-1
+    practical_feasibility: float = 0.0  # 0-1
+
+
+@dataclass
+class DeepInsights:
+    """
+    Deep analysis results from full paper reading.
+
+    Used in Stage 3 of three-stage analysis.
+    Includes complete information extraction for reproduction.
+    """
+    paper_id: str
+
+    # Complete technical extraction
+    equations: List[str] = field(default_factory=list)
+    algorithms: List[str] = field(default_factory=list)
+    code_patterns: List[str] = field(default_factory=list)
+
+    # Core contributions and insights
+    core_contribution: str = ""
+    implementation_details: str = ""
+    parameter_settings: Dict[str, Any] = field(default_factory=dict)
+    experimental_setup: str = ""
+
+    # Feasibility assessment
+    data_requirements: List[str] = field(default_factory=list)
+    computational_requirements: str = ""
+    reproducibility_score: float = 0.0  # 0-1
+
+
+@dataclass
+class ResearchGap:
+    """
+    Identified research gap with supporting evidence.
+    """
+    description: str
+    severity: str  # "major", "minor"
+    evidence: List[str]  # References to papers/sections
+    opportunity_score: float  # 0-1
+
+
+@dataclass
+class Hypothesis:
+    """
+    Research hypothesis with methodology and evidence.
+
+    Enhanced with deeper supporting information from literature analysis.
+    """
+    statement: str
+    rationale: str
+    supporting_evidence: List[str]  # References to specific papers/sections
+    feasibility_score: float  # 0-1
+    novelty_score: float  # 0-1
+
+
+@dataclass
+class ResearchSynthesis:
+    """
+    Comprehensive synthesis across all analyzed papers.
+
+    Final output of three-stage literature analysis.
+    """
+    literature_summary: str  # Comprehensive literature review
+
+    # Thematic organization
+    methodology_patterns: List[str] = field(default_factory=list)
+    performance_trends: List[str] = field(default_factory=list)
+    common_limitations: List[str] = field(default_factory=list)
+
+    # Research opportunities
+    identified_gaps: List[ResearchGap] = field(default_factory=list)
+    hypotheses: List[Hypothesis] = field(default_factory=list)
 
 
 class ResearchState(TypedDict):
