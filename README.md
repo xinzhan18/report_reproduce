@@ -20,6 +20,29 @@ This system automates quantitative finance research through four specialized AI 
 - 📅 **Scheduled Scanning**: Daily automated paper scanning and research initiation
 - 📝 **Academic Reports**: Generates publication-ready research reports
 
+### 🧠 Advanced Intelligence Features
+
+**NEW**: All agents now have persistent "souls" that learn and evolve over time:
+
+- 🎭 **Agent Personas**: Each agent has unique personality traits, strengths, and weaknesses
+- 🧠 **Long-term Memory**: Memories organized by time periods (YYYY-MM) for temporal context
+- 🔄 **Self-Reflection**: Automatic post-execution reflection on performance
+- ❌ **Mistake Registry**: Records all mistakes with recurrence prevention
+- 📚 **Knowledge Graph**: Living knowledge base of quantitative finance concepts that evolves
+- 🎓 **Expertise Evolution**: Agents level up (1-10) based on experience points
+- 📖 **Smart Literature Access**: Multi-source access (arXiv→OpenAccess→Institutional→SciHub)
+- 🔍 **Self-Iteration**: Agents see past mistakes and avoid repeating them
+
+**Example Evolution**:
+```
+Project 1: Agent makes mistake → Recorded in registry
+Project 5: Agent reviews mistakes before execution → Avoids past errors
+Project 10: Agent reaches Level 3 expertise → 85% success rate
+Project 20: Knowledge graph contains 100+ validated concepts → Smarter decisions
+```
+
+See [Agent Intelligence Integration Guide](docs/AGENT_INTELLIGENCE_INTEGRATION.md) for details.
+
 ## Architecture
 
 ```
@@ -161,36 +184,49 @@ print(f"Success rate: {stats['success_rate']:.1f}%")
 
 ```
 report_reproduce/
-├── agents/                    # Core agents
-│   ├── ideation_agent.py     # Literature review & hypothesis
-│   ├── planning_agent.py     # Experiment design
-│   ├── experiment_agent.py   # Backtest execution
-│   └── writing_agent.py      # Report generation
-├── config/                    # Configuration
-│   ├── agent_config.py       # Agent settings
-│   ├── llm_config.py         # Claude API config
-│   └── data_sources.py       # Data source configs
-├── core/                      # Core system
-│   ├── state.py              # State definitions
-│   ├── persistence.py        # Checkpointing
-│   └── pipeline.py           # Pipeline orchestration
-├── tools/                     # Utility tools
-│   ├── paper_fetcher.py      # arXiv API wrapper
-│   ├── file_manager.py       # File operations
-│   ├── data_fetcher.py       # Financial data (yfinance)
-│   └── backtest_engine.py    # Backtrader wrapper
-├── scheduler/                 # Automation
-│   ├── daily_scan.py         # Daily paper scanner
-│   └── pipeline_runner.py    # Pipeline manager
-├── data/                      # Data storage
-│   ├── literature/           # Cached papers
-│   └── checkpoints/          # State checkpoints
-├── outputs/                   # Research outputs
-│   └── {project_id}/         # Per-project outputs
-├── tests/                     # Test suite
+├── agents/                          # Core agents (with intelligence)
+│   ├── ideation_agent.py           # Literature review & hypothesis
+│   ├── planning_agent.py           # Experiment design
+│   ├── experiment_agent.py         # Backtest execution
+│   └── writing_agent.py            # Report generation
+├── config/                          # Configuration
+│   ├── agent_config.py             # Agent settings
+│   ├── llm_config.py               # Claude API config
+│   ├── multi_llm_config.py         # Multi-API-key management
+│   └── data_sources.py             # Data source configs
+├── core/                            # Core system
+│   ├── state.py                    # State definitions
+│   ├── persistence.py              # Checkpointing
+│   ├── pipeline.py                 # Pipeline orchestration
+│   ├── database.py                 # SQLite database management
+│   ├── agent_persona.py            # 🧠 Agent soul & memory
+│   ├── self_reflection.py          # 🔄 Self-reflection engine
+│   ├── knowledge_graph.py          # 📚 Knowledge graph
+│   ├── iteration_memory.py         # Iteration tracking
+│   └── document_tracker.py         # Document access tracking
+├── tools/                           # Utility tools
+│   ├── paper_fetcher.py            # arXiv API wrapper
+│   ├── file_manager.py             # File operations
+│   ├── data_fetcher.py             # Financial data (yfinance)
+│   ├── backtest_engine.py          # Backtrader wrapper
+│   ├── pdf_reader.py               # PDF download & parsing
+│   ├── citation_manager.py         # Citation management
+│   └── smart_literature_access.py  # 📖 Smart literature access
+├── scheduler/                       # Automation
+│   ├── daily_scan.py               # Daily paper scanner
+│   └── pipeline_runner.py          # Pipeline manager
+├── data/                            # Data storage
+│   ├── literature/                 # Cached papers & PDFs
+│   ├── checkpoints/                # State checkpoints
+│   └── research.db                 # SQLite database (all intelligence data)
+├── outputs/                         # Research outputs
+│   └── {project_id}/               # Per-project outputs
+├── docs/                            # Documentation
+│   └── AGENT_INTELLIGENCE_INTEGRATION.md  # Intelligence guide
+├── tests/                           # Test suite
 ├── requirements.txt
 ├── README.md
-└── CLAUDE.md                 # Development guide
+└── CLAUDE.md                       # Development guide
 ```
 
 ## Configuration
