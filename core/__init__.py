@@ -2,19 +2,13 @@
 Core module containing state management and pipeline orchestration.
 """
 
-# ============================================================================
-# 文件头注释 (File Header)
-# POSITION: 模块初始化文件 - 导出core模块的核心类(ResearchState/PaperMetadata/get_checkpointer/create_config/create_research_pipeline)
-# ============================================================================
+# POSITION: 模块初始化文件
+# 注意: pipeline 不在此处导入以避免循环依赖 (agents ↔ core)
+# 使用 from core.pipeline import create_research_pipeline 直接导入
 
 from .state import ResearchState, PaperMetadata
-from .persistence import get_checkpointer, create_config
-from .pipeline import create_research_pipeline
 
 __all__ = [
     'ResearchState',
     'PaperMetadata',
-    'get_checkpointer',
-    'create_config',
-    'create_research_pipeline',
 ]

@@ -9,10 +9,11 @@ This file provides guidance to Claude Code when working with code in this reposi
 This system automates quantitative finance research from literature review through experiment execution to report generation using four specialized AI agents working in a pipeline.
 
 
+
 ## 开发规范
 
-1. 任何情况下不要兼容旧代码 直接做完整的修改 不要做兼容
-
+1. 任何情况下不要兼容旧代码 直接做完整的修改 采用最简单的方法来更新代码
+2. 中文回复
 ---
 
 ## 全局架构地图 (Global Architecture Map)
@@ -28,16 +29,14 @@ This system automates quantitative finance research from literature review throu
 │   - LangGraph workflow, state routing                      │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 3: Agents (agents/)                                  │
-│   - IdeationAgent, PlanningAgent, ExperimentAgent,         │
-│     WritingAgent                                            │
-│   - Services: LLMService, IntelligenceContext,             │
-│     OutputManager                                           │
-│   - Utils: JSONParser, PromptBuilder                        │
+│   - BaseAgent, IdeationAgent, PlanningAgent,               │
+│     ExperimentAgent, WritingAgent                           │
+│   - agents/llm.py (call_llm / call_llm_json)              │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 2: Intelligence & State (core/)                      │
 │   - State management, Memory system, Knowledge graph       │
-│   - AgentMemoryManager, DocumentMemoryManager              │
-│   - Database, SelfReflection, AgentPersona                 │
+│   - AgentMemory (core/memory.py), DocumentMemoryManager    │
+│   - Database, KnowledgeGraph                               │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 1: Tools & Configuration (tools/, config/)           │
 │   - PaperFetcher, BacktestEngine, DataFetcher              │
@@ -57,9 +56,10 @@ Scheduler → Pipeline → Agents → Tools → Data Storage
 
 每个模块都有独立的CLAUDE.md文档：
 
-- **agents/** - AI智能体层 (4个核心Agent + services + utils)
+- **agents/** - AI智能体层 (BaseAgent + 4个核心Agent + llm.py)
 - **config/** - 系统配置层 (LLM、认证、数据源配置)
-- **core/** - 核心基础设施层 (状态、Pipeline、记忆、数据库)
+- **core/** - 核心基础设施层 (状态、Pipeline、AgentMemory、知识图谱、数据库)
+- **data/** - Agent记忆数据 (persona.md, memory.md, mistakes.md, daily/)
 - **tools/** - 工具库层 (数据获取、回测、文件管理)
 - **scheduler/** - 调度自动化层 (定时任务、执行器)
 - **tests/** - 测试套件层
@@ -119,7 +119,7 @@ Scheduler → Pipeline → Agents → Tools → Data Storage
 
 ```bash
 # Check all folders have CLAUDE.md
-for dir in agents agents/services agents/utils config core tools scheduler tests script; do
+for dir in agents config core tools scheduler tests scripts; do
     if [ ! -f "$dir/CLAUDE.md" ]; then
         echo "❌ Missing: $dir/CLAUDE.md"
     else

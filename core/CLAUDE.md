@@ -12,15 +12,15 @@
 
 ### state.py
 - **角色**: 状态定义 (State Schema)
-- **功能**: 定义ResearchState TypedDict,是整个系统的数据契约,所有Agent和Pipeline的状态流转基础
+- **功能**: 定义ResearchState TypedDict,是整个系统的数据契约
 
 ### pipeline.py
 - **角色**: Pipeline编排器 (Workflow Orchestration)
 - **功能**: 使用LangGraph编排四个Agent的执行流程,实现状态路由、错误处理、checkpointing
 
-### agent_memory_manager.py
+### memory.py
 - **角色**: Agent记忆管理器 (Memory Manager)
-- **功能**: 管理Agent的Markdown记忆系统(persona/memory/daily/mistakes),默认路径从`data/agents/`迁移至`data/`,支持向后兼容
+- **功能**: AgentMemory类,管理 data/{agent_name}/ 下的 Markdown 记忆文件 (persona/memory/mistakes/daily)，直接构建 system prompt
 
 ### document_memory_manager.py
 - **角色**: 文档记忆管理器 (Document Memory)
@@ -42,14 +42,6 @@
 - **角色**: 持久化管理器 (Persistence Manager)
 - **功能**: 管理LangGraph的checkpoint持久化,支持Pipeline状态恢复和断点续传
 
-### agent_persona.py
-- **角色**: Agent人格系统 (Agent Persona)
-- **功能**: 定义Agent的人格特征、风格偏好、决策模式,增强Agent的个性化
-
-### self_reflection.py
-- **角色**: 自我反思系统 (Self-Reflection)
-- **功能**: 实现Agent的自我评估、错误反思、策略调整能力
-
 ### iteration_memory.py
 - **角色**: 迭代记忆 (Iteration Memory)
 - **功能**: 记录Pipeline多次迭代的历史,支持跨迭代的学习和优化
@@ -60,13 +52,19 @@
 
 ### logging_config.py
 - **角色**: 日志配置 (Logging Configuration)
-- **功能**: 配置系统日志输出,支持文件日志、控制台日志、日志级别管理
+- **功能**: 配置系统日志输出
 
 ### __init__.py
 - **角色**: 模块初始化
-- **功能**: 导出核心类和函数,提供统一的包接口
+- **功能**: 导出核心类和函数
+
+## 已删除文件
+
+- `agent_memory_manager.py` → 替换为 `memory.py`
+- `agent_persona.py` → 已删除 (死代码,从未被Agent调用)
+- `self_reflection.py` → 已删除 (死代码,从未被Agent调用)
 
 ## 更新历史
 
-- 2026-02-28: agent_memory_manager.py默认路径从data/agents/迁移至data/,添加向后兼容和migrate_to_new_path()方法
-- 2026-02-27: 创建此文档,记录当前架构
+- 2026-02-28: 重构: 用 memory.py (AgentMemory) 替代 agent_memory_manager.py，删除 agent_persona.py 和 self_reflection.py
+- 2026-02-27: 创建此文档

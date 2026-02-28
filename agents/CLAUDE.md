@@ -5,56 +5,48 @@
 ## 三行架构说明
 
 1. **职责**: 实现四个核心研究智能体,负责从文献分析到报告生成的完整研究流程
-2. **依赖**: core/state (ResearchState), config/agent_config (Agent配置), services (LLM/Intelligence/Output服务), utils (JSON解析/Prompt构建)
-3. **输出**: BaseAgent抽象基类, IdeationAgent, PlanningAgent, ExperimentAgent, WritingAgent四个具体实现
+2. **依赖**: agents.llm (LLM调用), core.memory (AgentMemory), core.knowledge_graph, core.state, config.agent_config, tools/*
+3. **输出**: BaseAgent抽象基类, IdeationAgent, PlanningAgent, ExperimentAgent, WritingAgent
 
 ## 架构模式
 
 所有四个Agent统一继承自BaseAgent (Template Method Pattern):
-- **BaseAgent**: 提供execute()生命周期、call_llm()、save_artifact()等基础设施
-- **子类Agent**: 仅实现`_execute()`业务逻辑和`_generate_execution_summary()`
-- 消除了~790行基础设施重复代码
+- **BaseAgent**: 提供 `__call__` 生命周期、`call_llm()` / `call_llm_json()`、`save_artifact()`
+- **子类Agent**: 仅实现 `_execute()` 业务逻辑和可选的 `_generate_execution_summary()`
+- 无 services 中间层：LLM 调用通过 `agents.llm` 模块级函数；记忆通过 `core.memory.AgentMemory`；文件保存内联
 
 ## 文件清单
 
 ### base_agent.py
 - **角色**: Agent抽象基类 (Template Method Pattern)
-- **功能**: 定义execute()生命周期,提供call_llm()、save_artifact()等通用方法,消除代码重复
-- **行数**: ~339行
+- **功能**: 定义 `__call__` 生命周期 (setup→execute→save_log)，提供 `call_llm()`、`call_llm_json()`、`save_artifact()`
+
+### llm.py
+- **角色**: LLM 调用模块 (无状态函数)
+- **功能**: `call_llm()` 带自动重试、`call_llm_json()` 返回解析后的 JSON、`extract_json()` 从文本提取 JSON
 
 ### ideation_agent.py
 - **角色**: 文献智能体 (Research Ideation) - 继承BaseAgent
-- **功能**: 文献扫描、深度分析、研究差距识别、假设生成,输出研究方向
-- **行数**: ~422行
+- **功能**: 文献扫描、深度分析、研究差距识别、假设生成
 
 ### planning_agent.py
 - **角色**: 规划智能体 (Experiment Planning) - 继承BaseAgent
-- **功能**: 实验设计、方法论规划、技术路线制定,输出实验计划
-- **重构**: 从独立实现重构为继承BaseAgent,消除~260行重复代码
+- **功能**: 实验设计、方法论规划、技术路线制定
 
 ### experiment_agent.py
 - **角色**: 实验智能体 (Execution & Testing) - 继承BaseAgent
-- **功能**: 策略代码生成、回测执行、结果分析,输出实验数据和策略代码
-- **重构**: 从独立实现重构为继承BaseAgent,消除~280行重复代码
+- **功能**: 策略代码生成、回测执行、结果分析
 
 ### writing_agent.py
 - **角色**: 写作智能体 (Report Generation) - 继承BaseAgent
-- **功能**: 研究报告生成、文档整合、学术写作,输出完整研究报告
-- **重构**: 从独立实现重构为继承BaseAgent,消除~250行重复代码
+- **功能**: 研究报告生成、文档整合、学术写作
 
 ### __init__.py
 - **角色**: 模块初始化
-- **功能**: 导出四个Agent和BaseAgent,提供统一的包接口
-
-## 子模块
-
-### services/ - Agent服务层
-包含LLMService (LLM调用封装)、IntelligenceContext (智能上下文管理)、OutputManager (输出管理器)
-
-### utils/ - Agent工具层
-包含JSONParser (JSON解析工具)、PromptBuilder (Prompt构建工具)
+- **功能**: 导出四个Agent
 
 ## 更新历史
 
-- 2026-02-28: 重构PlanningAgent/WritingAgent/ExperimentAgent继承BaseAgent,消除~790行重复代码
-- 2026-02-27: 创建此文档,记录当前架构
+- 2026-02-28: 重构：消除 services/utils 间接层，扁平化目录结构，LLM/Memory/Output 直接集成到 BaseAgent
+- 2026-02-28: 重构PlanningAgent/WritingAgent/ExperimentAgent继承BaseAgent
+- 2026-02-27: 创建此文档

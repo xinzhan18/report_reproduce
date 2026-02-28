@@ -1,4 +1,4 @@
-# Ideation Agent - Long-term Memory
+# Experiment Agent - Long-term Memory
 
 *Created: 2026-02-27*
 

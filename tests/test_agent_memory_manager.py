@@ -1,90 +1,71 @@
 """
-Tests for AgentMemoryManager - Markdown-based memory system
+Tests for AgentMemory (core.memory) - Markdown-based memory system
 """
 
-# ============================================================================
-# 文件头注释 (File Header)
-# INPUT:  外部依赖 - pytest, sys, importlib.util, pathlib.Path, datetime, shutil
-# OUTPUT: 对外提供 - 测试函数集(test_memory_manager_*/test_persona_*/test_daily_log_*等)
-# POSITION: 系统地位 - [Tests/Unit Tests] - Agent记忆管理器测试,验证Markdown记忆系统的存储和检索
-#
-# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
-# ============================================================================
+# INPUT:  pytest, core.memory.AgentMemory, datetime, pathlib
+# OUTPUT: 测试函数集
+# POSITION: Tests/Unit Tests - AgentMemory 单元测试
 
 import pytest
-import sys
-import importlib.util
 from pathlib import Path
 from datetime import datetime, timedelta
-import shutil
 
-# Import directly from the module file to avoid core.__init__.py
-module_path = Path(__file__).parent.parent / "core" / "agent_memory_manager.py"
-spec = importlib.util.spec_from_file_location("agent_memory_manager", module_path)
-memory_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(memory_module)
-
-AgentMemoryManager = memory_module.AgentMemoryManager
-get_agent_memory_manager = memory_module.get_agent_memory_manager
+from core.memory import AgentMemory
 
 
 @pytest.fixture
 def temp_memory_dir(tmp_path):
     """创建临时测试目录"""
-    return tmp_path / "test_agents"
+    return tmp_path / "test_data"
 
 
 @pytest.fixture
-def ideation_manager(temp_memory_dir):
-    """创建ideation agent的memory manager"""
-    return AgentMemoryManager("ideation", base_path=str(temp_memory_dir))
+def ideation_memory(temp_memory_dir):
+    """创建 ideation agent 的 AgentMemory"""
+    return AgentMemory("ideation", base_path=str(temp_memory_dir))
 
 
-class TestAgentMemoryManager:
-    """测试AgentMemoryManager核心功能"""
+class TestAgentMemory:
+    """测试 AgentMemory 核心功能"""
 
-    def test_initialization(self, ideation_manager, temp_memory_dir):
-        """测试初始化创建正确的目录结构"""
-        assert ideation_manager.agent_dir.exists()
-        assert ideation_manager.daily_dir.exists()
-        assert ideation_manager.agent_name == "ideation"
+    def test_initialization(self, ideation_memory, temp_memory_dir):
+        assert ideation_memory.agent_dir.exists()
+        assert ideation_memory.daily_dir.exists()
+        assert ideation_memory.agent_name == "ideation"
 
-    def test_load_all_memories_creates_defaults(self, ideation_manager):
-        """测试加载记忆时自动创建默认文件"""
-        memories = ideation_manager.load_all_memories()
+    def test_build_system_prompt_empty(self, ideation_memory):
+        """没有文件时 build_system_prompt 返回空"""
+        prompt = ideation_memory.build_system_prompt()
+        assert isinstance(prompt, str)
 
-        # 验证返回所有必要的记忆类型
-        assert "persona" in memories
-        assert "memory" in memories
-        assert "mistakes" in memories
-        assert "daily_recent" in memories
+    def test_build_system_prompt_with_files(self, ideation_memory):
+        """有文件时 build_system_prompt 包含内容"""
+        ideation_memory.persona_file.write_text("I am ideation agent", encoding="utf-8")
+        ideation_memory.memory_file.write_text("Key insight", encoding="utf-8")
+        ideation_memory.mistakes_file.write_text("Common mistake", encoding="utf-8")
 
-        # 验证文件已创建
-        assert ideation_manager.persona_file.exists()
-        assert ideation_manager.memory_file.exists()
-        assert ideation_manager.mistakes_file.exists()
+        prompt = ideation_memory.build_system_prompt()
+        assert "Agent Persona" in prompt
+        assert "I am ideation agent" in prompt
+        assert "Long-term Memory" in prompt
+        assert "Key insight" in prompt
+        assert "Common Mistakes" in prompt
+        assert "Common mistake" in prompt
 
-        # 验证persona包含预期内容
-        assert "Ideation Agent - Persona" in memories["persona"]
-        assert "Core Identity" in memories["persona"]
-
-    def test_save_daily_log(self, ideation_manager):
-        """测试保存每日日志"""
+    def test_save_daily_log(self, ideation_memory):
         today = datetime.now().strftime("%Y-%m-%d")
 
-        ideation_manager.save_daily_log(
+        ideation_memory.save_daily_log(
             project_id="test_project_001",
             execution_log="Scanned 25 papers, found 3 gaps",
             learnings=["Learning 1", "Learning 2"],
             mistakes=["Mistake 1"],
-            reflection="Good execution overall"
+            reflection="Good execution overall",
         )
 
-        # 验证文件创建
-        daily_file = ideation_manager.daily_dir / f"{today}.md"
+        daily_file = ideation_memory.daily_dir / f"{today}.md"
         assert daily_file.exists()
 
-        # 验证内容
         content = daily_file.read_text(encoding="utf-8")
         assert "test_project_001" in content
         assert "Scanned 25 papers" in content
@@ -92,243 +73,117 @@ class TestAgentMemoryManager:
         assert "Mistake 1" in content
         assert "Good execution overall" in content
 
-    def test_save_daily_log_append(self, ideation_manager):
-        """测试同一天多次保存会追加内容"""
+    def test_save_daily_log_append(self, ideation_memory):
         today = datetime.now().strftime("%Y-%m-%d")
 
-        # 第一次保存
-        ideation_manager.save_daily_log(
-            project_id="project_001",
-            execution_log="First execution"
-        )
+        ideation_memory.save_daily_log(project_id="project_001", execution_log="First execution")
+        ideation_memory.save_daily_log(project_id="project_002", execution_log="Second execution")
 
-        # 第二次保存
-        ideation_manager.save_daily_log(
-            project_id="project_002",
-            execution_log="Second execution"
-        )
-
-        # 验证内容都存在
-        daily_file = ideation_manager.daily_dir / f"{today}.md"
+        daily_file = ideation_memory.daily_dir / f"{today}.md"
         content = daily_file.read_text(encoding="utf-8")
         assert "project_001" in content
         assert "project_002" in content
         assert "First execution" in content
         assert "Second execution" in content
 
-    def test_update_memory(self, ideation_manager):
-        """测试更新总体记忆"""
-        # 先加载以创建默认文件
-        ideation_manager.load_all_memories()
-
-        # 添加新洞察
-        ideation_manager.update_memory(
-            new_insight="Momentum strategies work better in trending markets",
-            category="Domain Knowledge"
+    def test_add_learning(self, ideation_memory):
+        ideation_memory.memory_file.write_text("# Memory\n", encoding="utf-8")
+        ideation_memory.add_learning(
+            "Momentum strategies work better in trending markets",
+            category="Domain Knowledge",
         )
 
-        # 验证内容
-        content = ideation_manager.memory_file.read_text(encoding="utf-8")
+        content = ideation_memory.memory_file.read_text(encoding="utf-8")
         assert "Domain Knowledge" in content
         assert "Momentum strategies work better in trending markets" in content
 
-    def test_record_mistake(self, ideation_manager):
-        """测试记录错误"""
-        # 先加载以创建默认文件
-        ideation_manager.load_all_memories()
+    def test_record_mistake(self, ideation_memory):
+        ideation_memory.mistakes_file.write_text(
+            "# Mistakes\n\n## Active Mistakes (Must Avoid)\n", encoding="utf-8"
+        )
 
-        # 记录错误
-        ideation_manager.record_mistake(
-            mistake_id="M001",
+        ideation_memory.record_mistake(
             description="Literature search too broad",
             severity=3,
             root_cause="Did not use exclusion keywords",
             prevention="Use NOT operator in search",
-            project_id="test_project"
+            project_id="test_project",
         )
 
-        # 验证内容
-        content = ideation_manager.mistakes_file.read_text(encoding="utf-8")
-        assert "M001" in content
+        content = ideation_memory.mistakes_file.read_text(encoding="utf-8")
         assert "Literature search too broad" in content
         assert "3/5" in content
         assert "Did not use exclusion keywords" in content
 
-    def test_load_recent_daily_logs(self, ideation_manager):
-        """测试加载最近的daily logs"""
-        # 创建多天的日志
+    def test_recent_daily_logs(self, ideation_memory):
         today = datetime.now()
         for i in range(5):
             date = (today - timedelta(days=i)).strftime("%Y-%m-%d")
-            daily_file = ideation_manager.daily_dir / f"{date}.md"
+            daily_file = ideation_memory.daily_dir / f"{date}.md"
             daily_file.write_text(f"# {date}\nTest content for {date}", encoding="utf-8")
 
-        # 加载记忆（默认最近3天）
-        memories = ideation_manager.load_all_memories()
-        daily_recent = memories["daily_recent"]
+        prompt = ideation_memory.build_system_prompt()
 
-        # 验证只包含最近3天
+        # 最近 3 天应出现在 prompt 中
         for i in range(3):
             date = (today - timedelta(days=i)).strftime("%Y-%m-%d")
-            assert date in daily_recent
+            assert date in prompt
 
-        # 验证不包含更早的
+        # 第 5 天不应出现
         old_date = (today - timedelta(days=4)).strftime("%Y-%m-%d")
-        assert old_date not in daily_recent
-
-    def test_get_agent_memory_manager(self, temp_memory_dir):
-        """测试工厂函数"""
-        manager = get_agent_memory_manager("planning")
-        assert manager.agent_name == "planning"
-        assert isinstance(manager, AgentMemoryManager)
+        assert old_date not in prompt
 
     def test_multiple_agents(self, temp_memory_dir):
-        """测试多个agent的记忆系统互不干扰"""
-        ideation_mgr = AgentMemoryManager("ideation", base_path=str(temp_memory_dir))
-        planning_mgr = AgentMemoryManager("planning", base_path=str(temp_memory_dir))
+        ideation = AgentMemory("ideation", base_path=str(temp_memory_dir))
+        planning = AgentMemory("planning", base_path=str(temp_memory_dir))
 
-        # 加载各自的记忆
-        ideation_mem = ideation_mgr.load_all_memories()
-        planning_mem = planning_mgr.load_all_memories()
+        ideation.persona_file.write_text("Ideation persona", encoding="utf-8")
+        planning.persona_file.write_text("Planning persona", encoding="utf-8")
 
-        # 验证persona不同
-        assert "Ideation Agent" in ideation_mem["persona"]
-        assert "Planning Agent" in planning_mem["persona"]
-
-        # 保存daily log
-        ideation_mgr.save_daily_log(project_id="ideation_project", execution_log="Ideation work")
-        planning_mgr.save_daily_log(project_id="planning_project", execution_log="Planning work")
-
-        # 验证文件在不同目录
-        today = datetime.now().strftime("%Y-%m-%d")
-        ideation_daily = ideation_mgr.daily_dir / f"{today}.md"
-        planning_daily = planning_mgr.daily_dir / f"{today}.md"
-
-        assert ideation_daily.exists()
-        assert planning_daily.exists()
-
-        # 验证内容独立
-        assert "ideation_project" in ideation_daily.read_text()
-        assert "planning_project" in planning_daily.read_text()
-        assert "ideation_project" not in planning_daily.read_text()
-
-
-class TestPersonaTemplates:
-    """测试各个agent的persona模板"""
-
-    def test_all_agent_personas_exist(self, temp_memory_dir):
-        """测试所有四个agent都有persona模板"""
-        agents = ["ideation", "planning", "experiment", "writing"]
-
-        for agent_name in agents:
-            manager = AgentMemoryManager(agent_name, base_path=str(temp_memory_dir))
-            memories = manager.load_all_memories()
-
-            # 验证persona包含必要部分
-            persona = memories["persona"]
-            assert f"{agent_name.title()} Agent - Persona" in persona
-            assert "Core Identity" in persona
-            assert "Personality & Approach" in persona
-
-    def test_ideation_persona_content(self, temp_memory_dir):
-        """测试Ideation agent的persona内容"""
-        manager = AgentMemoryManager("ideation", base_path=str(temp_memory_dir))
-        memories = manager.load_all_memories()
-        persona = memories["persona"]
-
-        # 验证关键特征
-        assert "文献扫描" in persona or "literature" in persona.lower()
-        assert "假设生成" in persona or "hypothesis" in persona.lower()
-        assert "好奇" in persona or "curious" in persona.lower()
-
-    def test_planning_persona_content(self, temp_memory_dir):
-        """测试Planning agent的persona内容"""
-        manager = AgentMemoryManager("planning", base_path=str(temp_memory_dir))
-        memories = manager.load_all_memories()
-        persona = memories["persona"]
-
-        # 验证关键特征
-        assert "实验规划" in persona or "experiment" in persona.lower()
-        assert "严谨" in persona or "rigorous" in persona.lower()
-
-    def test_experiment_persona_content(self, temp_memory_dir):
-        """测试Experiment agent的persona内容"""
-        manager = AgentMemoryManager("experiment", base_path=str(temp_memory_dir))
-        memories = manager.load_all_memories()
-        persona = memories["persona"]
-
-        # 验证关键特征
-        assert "回测" in persona or "backtest" in persona.lower()
-        assert "代码" in persona or "code" in persona.lower()
-
-    def test_writing_persona_content(self, temp_memory_dir):
-        """测试Writing agent的persona内容"""
-        manager = AgentMemoryManager("writing", base_path=str(temp_memory_dir))
-        memories = manager.load_all_memories()
-        persona = memories["persona"]
-
-        # 验证关键特征
-        assert "报告" in persona or "report" in persona.lower()
-        assert "清晰" in persona or "clear" in persona.lower()
+        assert "Ideation" in ideation.build_system_prompt()
+        assert "Planning" in planning.build_system_prompt()
 
 
 class TestMemoryIntegration:
-    """测试记忆系统的集成场景"""
 
     def test_complete_workflow(self, temp_memory_dir):
-        """测试完整的工作流程"""
-        manager = AgentMemoryManager("ideation", base_path=str(temp_memory_dir))
+        memory = AgentMemory("ideation", base_path=str(temp_memory_dir))
 
-        # 1. 首次加载（创建默认文件）
-        memories = manager.load_all_memories()
-        assert memories["persona"]
-        assert memories["memory"]
-        assert memories["mistakes"]
+        # 1. 创建初始文件
+        memory.persona_file.write_text("# Ideation Persona\nI explore", encoding="utf-8")
+        memory.memory_file.write_text("# Memory\n", encoding="utf-8")
+        memory.mistakes_file.write_text("# Mistakes\n\n## Active Mistakes (Must Avoid)\n", encoding="utf-8")
 
-        # 2. 执行任务并保存日志
-        manager.save_daily_log(
+        # 2. build prompt
+        prompt = memory.build_system_prompt()
+        assert "I explore" in prompt
+
+        # 3. 保存日志
+        memory.save_daily_log(project_id="proj_001", execution_log="Scanned 30 papers")
+
+        # 4. 添加学习
+        memory.add_learning("Momentum works in bull markets", "Domain Knowledge")
+
+        # 5. 记录错误
+        memory.record_mistake(
+            description="Search too broad", severity=2,
+            root_cause="No exclusion keywords", prevention="Use NOT operator",
             project_id="proj_001",
-            execution_log="Scanned 30 papers",
-            learnings=["Found momentum pattern"],
-            mistakes=[]
         )
 
-        # 3. 记录新洞察到长期记忆
-        manager.update_memory(
-            new_insight="Momentum strategies effective in bull markets",
-            category="Domain Knowledge"
-        )
+        # 6. 第二次 build prompt 应包含所有内容
+        prompt2 = memory.build_system_prompt()
+        assert "Momentum works in bull markets" in prompt2
+        assert "Search too broad" in prompt2
 
-        # 4. 记录错误
-        manager.record_mistake(
-            mistake_id="M001",
-            description="Search too broad",
-            severity=2,
-            root_cause="No exclusion keywords",
-            prevention="Use NOT operator",
-            project_id="proj_001"
-        )
+    def test_persistence_across_instances(self, temp_memory_dir):
+        m1 = AgentMemory("ideation", base_path=str(temp_memory_dir))
+        m1.memory_file.write_text("# Memory\n", encoding="utf-8")
+        m1.add_learning("Important insight", "Test")
 
-        # 5. 第二次加载（应该包含所有更新）
-        memories2 = manager.load_all_memories()
-
-        # 验证更新已保存
-        assert "Momentum strategies effective" in memories2["memory"]
-        assert "M001" in memories2["mistakes"]
-        assert "proj_001" in memories2["daily_recent"]
-
-    def test_memory_persistence_across_sessions(self, temp_memory_dir):
-        """测试记忆在会话间持久化"""
-        # 会话1：创建并保存
-        manager1 = AgentMemoryManager("ideation", base_path=str(temp_memory_dir))
-        manager1.load_all_memories()
-        manager1.update_memory("Important insight", "Test")
-
-        # 会话2：新实例应该能读取
-        manager2 = AgentMemoryManager("ideation", base_path=str(temp_memory_dir))
-        memories = manager2.load_all_memories()
-
-        assert "Important insight" in memories["memory"]
+        m2 = AgentMemory("ideation", base_path=str(temp_memory_dir))
+        prompt = m2.build_system_prompt()
+        assert "Important insight" in prompt
 
 
 if __name__ == "__main__":

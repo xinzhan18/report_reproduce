@@ -1,31 +1,13 @@
 """
-Ideation Agent - Literature review and hypothesis generation (REFACTORED)
+Ideation Agent - 文献综述与假设生成
 
-Refactored to inherit from BaseAgent, eliminating infrastructure duplication.
-Now focuses purely on business logic.
-
-Responsible for:
-- Scanning and fetching papers from arXiv and other sources
-- Analyzing literature and identifying trends
-- Discovering research gaps
-- Generating testable hypotheses
+Pipeline 第一阶段：扫描论文、分析文献、识别研究缺口、生成假设。
 """
 
-# ============================================================================
-# 文件头注释 (File Header)
-# INPUT:  外部依赖 - typing (类型系统), anthropic (Anthropic客户端),
-#                   agents/base_agent (BaseAgent基类),
-#                   core/state (ResearchState, PaperMetadata),
-#                   tools/paper_fetcher (PaperFetcher文献获取),
-#                   tools/file_manager (FileManager文件管理),
-#                   tools/smart_literature_access (文献智能访问)
-# OUTPUT: 对外提供 - IdeationAgent类,实现_execute()方法,
-#                   输出文献分析、研究差距、假设生成结果
-# POSITION: 系统地位 - Agent/Ideation (智能体层-文献智能体)
-#                     Pipeline第一阶段,负责文献扫描和研究方向生成
-#
-# 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
-# ============================================================================
+# INPUT:  agents.base_agent (BaseAgent), core.state, tools.paper_fetcher,
+#         tools.file_manager, tools.smart_literature_access
+# OUTPUT: IdeationAgent 类
+# POSITION: Agent层 - 文献智能体，Pipeline 第一阶段
 
 from typing import List, Dict
 from anthropic import Anthropic
@@ -38,107 +20,61 @@ from tools.smart_literature_access import get_literature_access_manager
 
 
 class IdeationAgent(BaseAgent):
-    """
-    Agent responsible for literature review and idea generation.
+    """文献综述与假设生成 Agent。"""
 
-    Refactored to use BaseAgent for infrastructure.
-    All memory, LLM calling, and output management handled by base class.
-    """
-
-    def __init__(
-        self,
-        llm: Anthropic,
-        paper_fetcher: PaperFetcher,
-        file_manager: FileManager
-    ):
-        """
-        Initialize Ideation Agent.
-
-        Args:
-            llm: Anthropic client instance
-            paper_fetcher: PaperFetcher instance for retrieving papers
-            file_manager: FileManager instance for file operations
-        """
-        # Initialize base agent (handles memory, LLM service, output manager)
-        super().__init__(llm, file_manager, agent_name="ideation")
-
-        # Agent-specific tools
-        self.paper_fetcher = paper_fetcher
+    def __init__(self, llm: Anthropic, paper_fetcher: PaperFetcher, file_manager: FileManager):
+        super().__init__(llm, file_manager, "ideation", paper_fetcher=paper_fetcher)
         self.literature_access = get_literature_access_manager()
 
     def _execute(self, state: ResearchState) -> ResearchState:
-        """
-        Execute ideation agent workflow (business logic only).
-
-        All infrastructure (memory loading, logging, etc.) handled by BaseAgent.
-
-        Args:
-            state: Current research state
-
-        Returns:
-            Updated research state with ideation outputs
-        """
         self.logger.info(f"Research direction: {state['research_direction']}")
 
-        # Consult knowledge graph for related concepts
-        related_knowledge = self.intelligence.knowledge_graph.search_knowledge(
-            query=state["research_direction"],
-            node_type=None
+        # 查询知识图谱
+        related_knowledge = self.knowledge_graph.search_knowledge(
+            query=state["research_direction"], node_type=None
         )
-
         if related_knowledge:
-            self.logger.info(
-                f"✓ Found {len(related_knowledge)} related concepts in knowledge graph"
-            )
-            for knowledge in related_knowledge[:3]:
-                self.logger.info(
-                    f"  - {knowledge['name']}: {knowledge['description'][:80]}..."
-                )
+            self.logger.info(f"Found {len(related_knowledge)} related concepts in knowledge graph")
+            for k in related_knowledge[:3]:
+                self.logger.info(f"  - {k['name']}: {k['description'][:80]}...")
 
-        # Step 1: Scan and fetch papers
+        # Step 1: 扫描论文
         papers = self.scan_papers(state["research_direction"])
         state["papers_reviewed"] = papers
-        self.logger.info(f"✓ Found {len(papers)} relevant papers")
+        self.logger.info(f"Found {len(papers)} relevant papers")
 
-        # Save papers to project
         self.save_artifact(
             content={"papers": papers},
             project_id=state["project_id"],
             filename="papers_analyzed.json",
             subdir="literature",
-            format="json"
         )
 
-        # Step 2: Analyze literature
-        literature_summary = self.analyze_literature(
-            papers, state["research_direction"]
-        )
+        # Step 2: 分析文献
+        literature_summary = self.analyze_literature(papers, state["research_direction"])
         state["literature_summary"] = literature_summary
-        self.logger.info("✓ Completed literature analysis")
+        self.logger.info("Completed literature analysis")
 
-        # Save literature summary
         self.save_artifact(
             content=literature_summary,
             project_id=state["project_id"],
             filename="literature_summary.md",
             subdir="literature",
-            format="markdown"
         )
 
-        # Step 3: Identify research gaps
+        # Step 3: 识别研究缺口
         research_gaps = self.identify_research_gaps(literature_summary, papers)
         state["research_gaps"] = research_gaps
-        self.logger.info(f"✓ Identified {len(research_gaps)} research gaps")
+        self.logger.info(f"Identified {len(research_gaps)} research gaps")
 
-        # Step 4: Generate hypothesis
+        # Step 4: 生成假设
         hypothesis = self.generate_hypothesis(
             research_gaps, literature_summary, state["research_direction"]
         )
         state["hypothesis"] = hypothesis
-        self.logger.info("✓ Generated research hypothesis")
+        self.logger.info(f"Generated research hypothesis")
         self.logger.info(f"Hypothesis: {hypothesis[:200]}...")
 
-        # Save hypothesis
         hypothesis_content = (
             f"# Research Hypothesis\n\n{hypothesis}\n\n"
             f"## Research Gaps\n\n" +
@@ -149,151 +85,74 @@ class IdeationAgent(BaseAgent):
             project_id=state["project_id"],
             filename="hypothesis.md",
             subdir="literature",
-            format="markdown"
         )
 
-        # Update knowledge graph with new insights
+        # 更新知识图谱
         if research_gaps:
             findings = [f"Research gap: {gap}" for gap in research_gaps[:3]]
-            self.intelligence.knowledge_graph.update_knowledge_from_research(
-                project_id=state["project_id"],
-                findings=findings,
-                llm=self.llm
+            self.knowledge_graph.update_knowledge_from_research(
+                project_id=state["project_id"], findings=findings, llm=self.llm
             )
 
         return state
 
     def _generate_execution_summary(self, state: ResearchState) -> Dict:
-        """
-        Generate execution summary for daily log.
-
-        Overrides base class to provide agent-specific summary.
-
-        Args:
-            state: Current research state
-
-        Returns:
-            Execution summary dict
-        """
         papers = state.get("papers_reviewed", [])
         research_gaps = state.get("research_gaps", [])
         hypothesis = state.get("hypothesis", "")
         literature_summary = state.get("literature_summary", "")
 
-        execution_log = f"""## Literature Review Execution
-
-### Papers Scanned
-- Total papers found: {len(papers)}
-- Research direction: {state['research_direction']}
-
-### Analysis Results
-- Literature summary length: {len(literature_summary)} characters
-- Research gaps identified: {len(research_gaps)}
-- Hypothesis generated: {'Yes' if hypothesis else 'No'}
-
-### Research Gaps Found
-{chr(10).join(f'- {gap}' for gap in research_gaps)}
-
-### Hypothesis
-{hypothesis[:500]}...
-"""
-
-        learnings = [
-            f"Successfully analyzed {len(papers)} papers on {state['research_direction']}",
-            f"Identified {len(research_gaps)} distinct research gaps",
-        ]
-
-        reflection_text = f"""## Reflection on Execution
-
-### What Went Well
-- Literature scan successfully retrieved {len(papers)} relevant papers
-- Gap analysis identified {len(research_gaps)} testable opportunities
-- Hypothesis is clear and actionable
-
-### Areas for Improvement
-- Consider expanding search keywords for broader coverage
-- Validate hypothesis testability with Planning Agent
-"""
-
         return {
-            "log": execution_log,
-            "learnings": learnings,
+            "log": f"Literature Review: {len(papers)} papers, {len(research_gaps)} gaps, hypothesis={'Yes' if hypothesis else 'No'}",
+            "learnings": [
+                f"Analyzed {len(papers)} papers on {state['research_direction']}",
+                f"Identified {len(research_gaps)} research gaps",
+            ],
             "mistakes": [],
-            "reflection": reflection_text
+            "reflection": f"Literature scan retrieved {len(papers)} papers, gap analysis identified {len(research_gaps)} opportunities",
         }
 
     def scan_papers(self, research_direction: str) -> List[PaperMetadata]:
-        """
-        Scan and fetch relevant papers.
-
-        Args:
-            research_direction: Research focus area
-
-        Returns:
-            List of PaperMetadata
-        """
+        """扫描并获取相关论文。"""
         categories = self.config.get("focus_categories", [])
         keywords = self.config.get("keywords", [])
 
-        # Fetch recent papers from categories
         recent_papers = self.paper_fetcher.fetch_recent_papers(
-            categories=categories,
-            days_back=7,  # Last week
+            categories=categories, days_back=7
         )
-
-        # Also search by keywords
         keyword_papers = self.paper_fetcher.fetch_papers_by_keywords(
             keywords=[research_direction] + keywords[:5],
-            categories=categories,
-            max_results=30,
+            categories=categories, max_results=30,
         )
 
-        # Combine and deduplicate
+        # 去重
         all_papers = recent_papers + keyword_papers
         seen_ids = set()
         unique_papers = []
-
         for paper in all_papers:
             if paper["arxiv_id"] not in seen_ids:
                 seen_ids.add(paper["arxiv_id"])
                 unique_papers.append(paper)
 
-        # Filter by relevance
         relevant_papers = self.paper_fetcher.filter_papers_by_relevance(
             unique_papers, keywords=[research_direction] + keywords, min_score=0.2
         )
+        return relevant_papers[:self.config.get("max_papers_per_scan", 50)]
 
-        return relevant_papers[: self.config.get("max_papers_per_scan", 50)]
-
-    def analyze_literature(
-        self, papers: List[PaperMetadata], research_direction: str
-    ) -> str:
-        """
-        Analyze papers and create comprehensive literature summary.
-
-        Args:
-            papers: List of papers to analyze
-            research_direction: Research focus
-
-        Returns:
-            Literature analysis summary
-        """
-        # Prepare paper summaries
+    def analyze_literature(self, papers: List[PaperMetadata], research_direction: str) -> str:
+        """分析论文并生成文献综述。"""
         paper_texts = []
-        for i, paper in enumerate(papers[:20], 1):  # Limit to 20 for context
+        for i, paper in enumerate(papers[:20], 1):
             paper_texts.append(
                 f"{i}. **{paper['title']}** ({paper['published'][:10]})\n"
                 f"   Authors: {', '.join(paper['authors'][:3])}\n"
                 f"   Abstract: {paper['abstract'][:300]}...\n"
             )
 
-        papers_text = "\n".join(paper_texts)
-
-        # Create analysis prompt (use LLMService)
         prompt = f"""Analyze the following recent papers related to "{research_direction}" and provide a comprehensive literature review.
 
 Papers to analyze:
-{papers_text}
+{chr(10).join(paper_texts)}
 
 Please provide:
 1. **Overall Trends**: What are the main themes and trends in this research area?
@@ -304,27 +163,10 @@ Please provide:
 
 Write a detailed literature review (800-1000 words) that synthesizes these papers."""
 
-        # Use BaseAgent's call_llm method
-        return self.call_llm(
-            prompt=prompt,
-            model=self.config.get("model", "sonnet"),
-            max_tokens=4000,
-            temperature=self.config.get("temperature", 0.7)
-        )
+        return self.call_llm(prompt=prompt, max_tokens=4000, temperature=self.config.get("temperature", 0.7))
 
-    def identify_research_gaps(
-        self, literature_summary: str, papers: List[PaperMetadata]
-    ) -> List[str]:
-        """
-        Identify research gaps and opportunities.
-
-        Args:
-            literature_summary: Summary of literature
-            papers: List of analyzed papers
-
-        Returns:
-            List of research gaps
-        """
+    def identify_research_gaps(self, literature_summary: str, papers: List[PaperMetadata]) -> List[str]:
+        """识别研究缺口。"""
         prompt = f"""Based on the following literature review, identify specific research gaps and opportunities in quantitative finance.
 
 Literature Review:
@@ -339,51 +181,22 @@ Format each gap as a single paragraph (2-3 sentences).
 
 Output as JSON array of strings."""
 
-        # Use BaseAgent's call_llm with JSON format
         try:
-            response = self.call_llm(
-                prompt=prompt,
-                model=self.config.get("model", "sonnet"),
-                max_tokens=2000,
-                temperature=self.config.get("temperature", 0.7),
-                response_format="json"
-            )
-
-            # Extract gaps array
-            if isinstance(response, dict):
-                return response if isinstance(response, list) else []
-            elif isinstance(response, list):
+            response = self.call_llm(prompt=prompt, max_tokens=2000,
+                                     temperature=self.config.get("temperature", 0.7),
+                                     response_format="json")
+            if isinstance(response, list):
                 return response
             return []
-
         except Exception as e:
             self.logger.warning(f"JSON parsing failed, using text fallback: {e}")
-            # Fallback: call as text and parse manually
-            text_response = self.call_llm(
-                prompt=prompt,
-                model=self.config.get("model", "sonnet"),
-                max_tokens=2000,
-                temperature=self.config.get("temperature", 0.7)
-            )
-
-            # Split by newlines
+            text_response = self.call_llm(prompt=prompt, max_tokens=2000,
+                                          temperature=self.config.get("temperature", 0.7))
             lines = [line.strip() for line in text_response.split("\n") if line.strip()]
             return [line for line in lines if len(line) > 50][:7]
 
-    def generate_hypothesis(
-        self, research_gaps: List[str], literature_summary: str, research_direction: str
-    ) -> str:
-        """
-        Generate testable research hypothesis.
-
-        Args:
-            research_gaps: Identified research gaps
-            literature_summary: Literature summary
-            research_direction: Research focus
-
-        Returns:
-            Research hypothesis
-        """
+    def generate_hypothesis(self, research_gaps: List[str], literature_summary: str, research_direction: str) -> str:
+        """生成可测试的研究假设。"""
         gaps_text = "\n".join(f"- {gap}" for gap in research_gaps)
 
         prompt = f"""Based on the identified research gaps, generate a specific, testable research hypothesis that can be validated through backtesting.
@@ -412,10 +225,4 @@ Format your response as:
 
 **Testability**: [How this can be validated through backtesting]"""
 
-        # Use BaseAgent's call_llm
-        return self.call_llm(
-            prompt=prompt,
-            model=self.config.get("model", "sonnet"),
-            max_tokens=2000,
-            temperature=self.config.get("temperature", 0.7)
-        )
+        return self.call_llm(prompt=prompt, max_tokens=2000, temperature=self.config.get("temperature", 0.7))

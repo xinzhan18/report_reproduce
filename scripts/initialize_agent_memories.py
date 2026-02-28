@@ -1,36 +1,24 @@
 """
 Initialize agent memory system - Generate all persona and memory files
-初始化agent记忆系统 - 生成所有persona和记忆文件
+初始化 agent 记忆系统
 """
 
-# ============================================================================
-# 文件头注释 (File Header)
-# INPUT:  外部依赖 - sys, importlib.util, pathlib.Path
-# OUTPUT: 对外提供 - initialize_all_agents函数, main函数(命令行入口)
-# POSITION: 系统地位 - [Scripts/Initialization Layer] - Agent记忆初始化脚本,为所有Agent生成persona/memory/mistakes文件
-#
-# 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
-# ============================================================================
+# INPUT:  sys, pathlib, core.memory
+# OUTPUT: initialize_all_agents 函数
+# POSITION: Scripts/初始化脚本
 
 import sys
-import importlib.util
 from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# Import directly from the module file to avoid core.__init__.py
-module_path = project_root / "core" / "agent_memory_manager.py"
-spec = importlib.util.spec_from_file_location("agent_memory_manager", module_path)
-memory_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(memory_module)
-
-get_agent_memory_manager = memory_module.get_agent_memory_manager
+from core.memory import AgentMemory
 
 
 def initialize_all_agents():
-    """Initialize memory files for all four agents"""
+    """Initialize memory files for all four agents."""
     agents = ["ideation", "planning", "experiment", "writing"]
 
     print("=" * 70)
@@ -41,27 +29,25 @@ def initialize_all_agents():
     for agent_name in agents:
         print(f"[*] Initializing {agent_name.upper()} Agent...")
 
-        # Get memory manager
-        manager = get_agent_memory_manager(agent_name)
+        memory = AgentMemory(agent_name)
 
-        # Load all memories (this will create default files if they don't exist)
-        memories = manager.load_all_memories()
+        # build_system_prompt will read existing files (or empty if not present)
+        prompt = memory.build_system_prompt()
 
-        # Verify files were created
         files_created = []
-        if manager.persona_file.exists():
-            files_created.append(f"  + persona.md ({manager.persona_file.stat().st_size} bytes)")
-        if manager.memory_file.exists():
-            files_created.append(f"  + memory.md ({manager.memory_file.stat().st_size} bytes)")
-        if manager.mistakes_file.exists():
-            files_created.append(f"  + mistakes.md ({manager.mistakes_file.stat().st_size} bytes)")
-        if manager.daily_dir.exists():
+        if memory.persona_file.exists():
+            files_created.append(f"  + persona.md ({memory.persona_file.stat().st_size} bytes)")
+        if memory.memory_file.exists():
+            files_created.append(f"  + memory.md ({memory.memory_file.stat().st_size} bytes)")
+        if memory.mistakes_file.exists():
+            files_created.append(f"  + mistakes.md ({memory.mistakes_file.stat().st_size} bytes)")
+        if memory.daily_dir.exists():
             files_created.append(f"  + daily/ directory")
 
         for file_info in files_created:
             print(f"  {file_info}")
 
-        print(f"  Location: {manager.agent_dir}")
+        print(f"  Location: {memory.agent_dir}")
         print()
 
     print("=" * 70)
@@ -69,13 +55,7 @@ def initialize_all_agents():
     print("=" * 70)
     print()
     print("You can now view and edit agent personas at:")
-    print(f"   {project_root / 'data' / 'agents'}")
-    print()
-    print("Tips:")
-    print("   - Edit persona.md to customize agent personalities")
-    print("   - memory.md will accumulate knowledge over time")
-    print("   - mistakes.md will track errors and prevention strategies")
-    print("   - daily/*.md logs are created automatically during execution")
+    print(f"   {project_root / 'data'}")
     print()
 
 

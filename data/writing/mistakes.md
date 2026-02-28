@@ -1,4 +1,4 @@
-# Planning Agent - Mistake Registry
+# Experiment Agent - Mistake Registry
 
 *Created: 2026-02-27*
 
