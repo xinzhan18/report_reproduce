@@ -14,10 +14,6 @@
 - **角色**: 论文获取工具 (Paper Retrieval)
 - **功能**: 从arXiv检索学术论文,支持关键词搜索、ID查询、相关性过滤
 
-### data_fetcher.py
-- **角色**: 金融数据获取工具 (Financial Data Fetcher)
-- **功能**: 从Yahoo Finance获取股票/指数数据,支持历史数据、实时行情
-
 ### backtest_engine.py
 - **角色**: 回测引擎 (Backtesting Engine)
 - **功能**: 使用Backtrader执行策略回测,计算收益率、夏普比率等指标
@@ -46,6 +42,11 @@
 - **角色**: 模块初始化
 - **功能**: 导出所有工具类,提供统一的包接口
 
+## 已删除文件
+
+- `data_fetcher.py` → 迁移到 `market_data/` 模块（2026-03-01）
+
 ## 更新历史
 
+- 2026-03-01: data_fetcher.py 迁移到 market_data/ 模块
 - 2026-02-27: 创建此文档,记录当前架构

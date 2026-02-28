@@ -8,7 +8,7 @@ Research Automation Agent System - Agents Module
 
 from .ideation_agent import IdeationAgent
 from .planning_agent import PlanningAgent
-from .experiment_agent import ExperimentAgent
+from .experiment import ExperimentAgent
 from .writing_agent import WritingAgent
 
 __all__ = [

@@ -61,8 +61,11 @@ AGENT_CONFIG: Dict[str, Dict[str, Any]] = {
         "name": "Experiment Agent",
         "model": "sonnet",  # Use Sonnet for code generation
         "temperature": 0.2,  # Low temperature for precise code
-        "max_retries": 2,  # Retry failed experiments
-        "execution_timeout": 3600,  # 1 hour timeout for backtest
+        "max_retries": 2,  # Retry failed experiments (controls pipeline retry)
+        "max_agent_turns": 30,  # Maximum tool-use loop iterations
+        "sandbox_timeout": 300,  # Per-command timeout in seconds
+        "sandbox_cleanup": True,  # Cleanup sandbox after experiment
+        "sandbox_base_dir": "sandbox_workspaces",  # Base directory for sandboxes
         "validation_metrics": {
             "min_sharpe_ratio": 0.5,  # Minimum acceptable Sharpe ratio
             "min_trades": 10,  # Minimum number of trades for statistical significance

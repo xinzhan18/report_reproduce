@@ -73,9 +73,12 @@ FINANCIAL_DATA_CONFIG = {
 }
 
 
-# Default symbols for backtesting
+# Default symbols for backtesting (keyed by market type)
 DEFAULT_SYMBOLS = {
-    "us_equities": ["SPY", "QQQ", "IWM", "DIA"],  # Major US ETFs
+    "us_equity": ["SPY", "QQQ", "IWM", "DIA"],  # Major US ETFs
+    "cn_equity": ["000001", "000300", "600519"],  # 平安银行、沪深300ETF、茅台
+    "hk_equity": ["0700.HK", "9988.HK"],  # 腾讯、阿里
+    "crypto": ["BTC/USDT", "ETH/USDT"],  # 主流加密货币
     "sectors": ["XLF", "XLE", "XLK", "XLV", "XLI"],  # Sector ETFs
     "international": ["EFA", "EEM", "VWO"],  # International ETFs
     "fixed_income": ["TLT", "IEF", "LQD", "HYG"],  # Bond ETFs

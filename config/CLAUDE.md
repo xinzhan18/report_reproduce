@@ -24,7 +24,7 @@
 
 ### agent_config.py
 - **角色**: Agent参数配置 (Agent Parameters)
-- **功能**: 定义四个Agent的具体参数、提示词模板、行为配置
+- **功能**: 定义四个Agent的具体参数、行为配置。experiment 配置含 max_agent_turns/sandbox_timeout/sandbox_cleanup/sandbox_base_dir
 
 ### multi_llm_config.py
 - **角色**: 多模型配置 (Multi-Model Config)

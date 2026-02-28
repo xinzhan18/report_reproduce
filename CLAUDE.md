@@ -30,7 +30,8 @@ This system automates quantitative finance research from literature review throu
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 3: Agents (agents/)                                  │
 │   - BaseAgent, IdeationAgent, PlanningAgent,               │
-│     ExperimentAgent, WritingAgent                           │
+│     ExperimentAgent (agents/experiment/ agentic tool-use), │
+│     WritingAgent                                            │
 │   - agents/llm.py (call_llm / call_llm_json)              │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 2: Intelligence & State (core/)                      │
@@ -38,8 +39,11 @@ This system automates quantitative finance research from literature review throu
 │   - AgentMemory (core/memory.py), DocumentMemoryManager    │
 │   - Database, KnowledgeGraph                               │
 ├─────────────────────────────────────────────────────────────┤
+│ Layer 1.5: Market Data (market_data/)                      │
+│   - DataFetcher, DataSource (yfinance/akshare/ccxt)        │
+├─────────────────────────────────────────────────────────────┤
 │ Layer 1: Tools & Configuration (tools/, config/)           │
-│   - PaperFetcher, BacktestEngine, DataFetcher              │
+│   - PaperFetcher, BacktestEngine, FileManager              │
 │   - LLM Config, Auth Config, Agent Config                  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -47,8 +51,8 @@ This system automates quantitative finance research from literature review throu
 ### 数据流向 (Data Flow)
 
 ```
-Scheduler → Pipeline → Agents → Tools → Data Storage
-    ↓          ↓         ↓        ↓         ↓
+Scheduler → Pipeline → Agents → Tools/MarketData → Data Storage
+    ↓          ↓         ↓            ↓                ↓
   Config ← Core/State → Memory → Database → Outputs
 ```
 
@@ -56,11 +60,12 @@ Scheduler → Pipeline → Agents → Tools → Data Storage
 
 每个模块都有独立的CLAUDE.md文档：
 
-- **agents/** - AI智能体层 (BaseAgent + 4个核心Agent + llm.py)
+- **agents/** - AI智能体层 (BaseAgent + 4个核心Agent + llm.py; ExperimentAgent 为 agents/experiment/ 子包，Agentic Tool-Use 引擎)
 - **config/** - 系统配置层 (LLM、认证、数据源配置)
 - **core/** - 核心基础设施层 (状态、Pipeline、AgentMemory、知识图谱、数据库)
 - **data/** - Agent记忆数据 (persona.md, memory.md, mistakes.md, daily/)
-- **tools/** - 工具库层 (数据获取、回测、文件管理)
+- **market_data/** - 数据层 (DataFetcher路由器, DataSource抽象: yfinance/akshare/ccxt)
+- **tools/** - 工具库层 (论文获取、回测、文件管理)
 - **scheduler/** - 调度自动化层 (定时任务、执行器)
 - **tests/** - 测试套件层
 - **scripts/** - 运维脚本层
