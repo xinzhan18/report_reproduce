@@ -9,7 +9,7 @@ Connects all four agents in a workflow with error handling and checkpointing.
 # INPUT:  外部依赖 - langgraph (Pipeline框架), typing (类型系统),
 #                   core/state (ResearchState状态定义),
 #                   agents (四个Agent类),
-#                   tools (PaperFetcher, FileManager, DataFetcher, BacktestEngine),
+#                   tools (PaperFetcher, FileManager, DataFetcher, BacktestEngine, PDFReader),
 #                   config/llm_config (LLM客户端),
 #                   core/persistence (Checkpointer)
 # OUTPUT: 对外提供 - create_research_pipeline()函数,返回LangGraph编排器,
@@ -31,6 +31,7 @@ from tools.paper_fetcher import PaperFetcher
 from tools.file_manager import FileManager
 from tools.data_fetcher import FinancialDataFetcher
 from tools.backtest_engine import BacktestEngine
+from tools.pdf_reader import PDFReader
 from config.llm_config import get_llm
 from core.persistence import get_checkpointer
 
@@ -68,7 +69,8 @@ def create_research_pipeline():
     backtest_engine = BacktestEngine()
 
     # Initialize agents
-    ideation_agent = IdeationAgent(llm, paper_fetcher, file_manager)
+    pdf_reader = PDFReader()
+    ideation_agent = IdeationAgent(llm, paper_fetcher, file_manager, pdf_reader=pdf_reader)
     planning_agent = PlanningAgent(llm, file_manager)
     experiment_agent = ExperimentAgent(llm, file_manager, data_fetcher, backtest_engine)
     writing_agent = WritingAgent(llm, file_manager)

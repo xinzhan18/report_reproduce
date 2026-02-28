@@ -65,8 +65,8 @@ def extract_json(text: str) -> dict:
         except json.JSONDecodeError:
             pass
 
-    # Strategy 2: raw { ... }
-    m = re.search(r'\{.*\}', text, re.DOTALL)
+    # Strategy 2: raw { ... } 或 [ ... ]
+    m = re.search(r'[\{\[].*[\}\]]', text, re.DOTALL)
     if m:
         try:
             return json.loads(m.group(0))

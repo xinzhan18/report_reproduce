@@ -6,7 +6,7 @@ Agent-specific configurations.
 # 文件头注释 (File Header)
 # INPUT:  外部依赖 - typing.Dict/Any
 # OUTPUT: 对外提供 - AGENT_CONFIG字典, PIPELINE_CONFIG字典, QUALITY_THRESHOLDS字典, get_agent_config函数, get_model_for_agent函数
-# POSITION: 系统地位 - [Config/Agent Layer] - Agent参数配置中心,定义四个Agent的模型/温度/业务参数
+# POSITION: 系统地位 - [Config/Agent Layer] - Agent参数配置中心,定义四个Agent的模型/温度/业务参数(含深度分析配置)
 #
 # 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
 # ============================================================================
@@ -31,6 +31,8 @@ AGENT_CONFIG: Dict[str, Dict[str, Any]] = {
             "stat.ML",   # Machine Learning Statistics
             "cs.LG",     # Machine Learning (CS)
         ],
+        "deep_analysis_count": 5,       # 深度分析论文数量上限
+        "fallback_to_abstract": True,   # PDF 失败时退化为摘要分析
         "keywords": [
             "quantitative finance",
             "algorithmic trading",

@@ -27,7 +27,8 @@
 
 ### ideation_agent.py
 - **角色**: 文献智能体 (Research Ideation) - 继承BaseAgent
-- **功能**: 文献扫描、深度分析、研究差距识别、假设生成
+- **功能**: 三阶段深度文献分析流水线：Stage1 扫描+LLM排序(RankedPaper)、Stage2 PDF深度阅读+缓存(StructuredInsights)、Stage3 跨论文综合→研究缺口→假设生成(ResearchSynthesis→ResearchGap→Hypothesis)
+- **依赖**: PDFReader(PDF下载/解析)、DocumentMemoryManager(分析缓存)、KnowledgeGraph(上下文注入)
 
 ### planning_agent.py
 - **角色**: 规划智能体 (Experiment Planning) - 继承BaseAgent
@@ -47,6 +48,7 @@
 
 ## 更新历史
 
+- 2026-02-28: IdeationAgent 重构为三阶段深度文献分析流水线，集成 PDFReader + DocumentMemoryManager + KnowledgeGraph
 - 2026-02-28: 重构：消除 services/utils 间接层，扁平化目录结构，LLM/Memory/Output 直接集成到 BaseAgent
 - 2026-02-28: 重构PlanningAgent/WritingAgent/ExperimentAgent继承BaseAgent
 - 2026-02-27: 创建此文档
