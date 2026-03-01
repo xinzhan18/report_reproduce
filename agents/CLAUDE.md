@@ -35,7 +35,7 @@ class MyAgent(BaseAgent):
 
 ### base_agent.py
 - **角色**: Agent抽象基类 (Template Method + Agentic Tool-Use Pattern)
-- **功能**: `__call__` 生命周期, `_agentic_loop()` 通用工具循环, `call_llm()`/`call_llm_json()`/`save_artifact()`, 四个 hook 方法
+- **功能**: `__call__` 生命周期, `_agentic_loop()` 通用工具循环, `_reflect_and_update_memory()` LLM 反思记忆更新, `call_llm()`/`call_llm_json()`/`save_artifact()`, 四个 hook 方法
 
 ### llm.py
 - **角色**: LLM 调用模块 (无状态函数)
@@ -83,6 +83,7 @@ class MyAgent(BaseAgent):
 
 ## 更新历史
 
+- 2026-03-01: BaseAgent 新增 _reflect_and_update_memory()：执行完成后用 haiku LLM 分析日志，自动提取 learnings/mistakes 写入 AgentMemory
 - 2026-03-01: 10 项修复: Sortino 双重年化、BacktestEngine 假指标、PlanningAgent/WritingAgent prompt 修正、state["error"]→error_log、通用工具提取到 common_tools.py、删除死代码/配置、token 跟踪、沙箱安全增强
 - 2026-03-01: 全 Agent Agentic Tool-Use 架构升级：BaseAgent 新增 _agentic_loop() 通用循环 + ToolRegistry 注册中心 + BrowserManager 浏览器 + call_llm_tools()；IdeationAgent/PlanningAgent/WritingAgent 从单文件重构为子包，全部采用 agentic tool-use 模式；ExperimentAgent 适配 BaseAgent._agentic_loop()；删除旧单文件 ideation_agent.py/planning_agent.py/writing_agent.py
 - 2026-03-01: ExperimentAgent 升级为 Agentic Tool-Use 引擎

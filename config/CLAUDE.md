@@ -16,7 +16,7 @@
 
 ### agent_config.py
 - **角色**: Agent参数配置 (Agent Parameters)
-- **功能**: 定义四个Agent的具体参数、行为配置。experiment 配置含 max_agent_turns/sandbox_timeout/sandbox_cleanup/sandbox_base_dir
+- **功能**: 定义四个Agent的具体参数、行为配置。experiment 配置含 max_agent_turns/sandbox_timeout/sandbox_cleanup/sandbox_base_dir。REFLECTION_CONFIG 定义 Agent 反思记忆更新参数（模型、token 限制、日志截取长度、开关）
 
 ### data_sources.py
 - **角色**: 数据源配置 (Data Source Settings)
@@ -34,5 +34,6 @@
 
 ## 更新历史
 
+- 2026-03-01: agent_config.py 新增 REFLECTION_CONFIG 字典和 get_reflection_config() 函数，支持 Agent 反思记忆更新配置
 - 2026-03-01: 删除 multi_llm_config.py、llm_config_oauth.py、auth_config.py (死代码清理)
 - 2026-02-27: 创建此文档,记录当前架构

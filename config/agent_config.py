@@ -5,7 +5,7 @@ Agent-specific configurations.
 # ============================================================================
 # 文件头注释 (File Header)
 # INPUT:  外部依赖 - typing.Dict/Any
-# OUTPUT: 对外提供 - AGENT_CONFIG字典, PIPELINE_CONFIG字典, QUALITY_THRESHOLDS字典, get_agent_config函数, get_model_for_agent函数
+# OUTPUT: 对外提供 - AGENT_CONFIG字典, PIPELINE_CONFIG字典, QUALITY_THRESHOLDS字典, REFLECTION_CONFIG字典, get_agent_config函数, get_model_for_agent函数, get_reflection_config函数
 # POSITION: 系统地位 - [Config/Agent Layer] - Agent参数配置中心,定义四个Agent的模型/温度/业务参数(含深度分析配置)
 #
 # 注意:当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
@@ -133,3 +133,25 @@ def get_model_for_agent(agent_name: str) -> str:
     """
     config = get_agent_config(agent_name)
     return config.get("model", "sonnet")
+
+
+# Reflection configuration for automatic memory updates
+REFLECTION_CONFIG: Dict[str, Dict[str, Any]] = {
+    "_default": {
+        "enabled": True,
+        "model": "haiku",
+        "max_tokens": 1024,
+        "max_log_chars": 3500,
+    },
+    "ideation": {"enabled": True},
+    "planning": {"enabled": True},
+    "experiment": {"enabled": True},
+    "writing": {"enabled": True},
+}
+
+
+def get_reflection_config(agent_name: str) -> Dict[str, Any]:
+    """获取 Agent 反思配置，合并默认值。"""
+    default = REFLECTION_CONFIG.get("_default", {})
+    override = REFLECTION_CONFIG.get(agent_name, {})
+    return {**default, **override}

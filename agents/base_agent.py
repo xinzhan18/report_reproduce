@@ -12,9 +12,9 @@ Agentic Tool-Use: 子类可覆盖 _register_tools() + _build_tool_system_prompt(
 #         core.memory (AgentMemory),
 #         core.knowledge_graph (get_knowledge_graph),
 #         core.state (ResearchState),
-#         config.agent_config (get_agent_config)
+#         config.agent_config (get_agent_config, REFLECTION_CONFIG)
 # OUTPUT: BaseAgent 抽象基类
-# POSITION: Agent 层抽象基类（含通用 agentic tool-use 循环）
+# POSITION: Agent 层抽象基类（含通用 agentic tool-use 循环 + LLM 反思记忆更新）
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Union
@@ -26,7 +26,7 @@ from agents.tool_registry import ToolRegistry
 from core.memory import AgentMemory
 from core.knowledge_graph import get_knowledge_graph
 from core.state import ResearchState
-from config.agent_config import get_agent_config
+from config.agent_config import get_agent_config, REFLECTION_CONFIG
 
 
 class BaseAgent(ABC):
@@ -79,6 +79,9 @@ class BaseAgent(ABC):
 
             # Save log
             self._save_log(state)
+
+            # LLM 反思：从执行日志中提取 learnings/mistakes 写入记忆
+            self._reflect_and_update_memory(state)
 
             self.logger.info(f"{self.agent_name} agent completed successfully")
             return state
@@ -259,6 +262,7 @@ class BaseAgent(ABC):
         )
 
         execution_log = "\n".join(log_lines)
+        self._last_execution_log = execution_log
 
         # 如果有提交结果，调用 _on_submit_result 映射到 state
         if submitted_results is not None:
@@ -291,6 +295,66 @@ class BaseAgent(ABC):
             self.logger.info("Saved execution log to memory system")
         except Exception as e:
             self.logger.warning(f"Failed to save execution log: {e}")
+
+    def _reflect_and_update_memory(self, state: ResearchState):
+        """用 LLM 分析执行日志，自动提取 learnings/mistakes 写入记忆。"""
+        config = REFLECTION_CONFIG.get(self.agent_name, REFLECTION_CONFIG["_default"])
+        merged = {**REFLECTION_CONFIG.get("_default", {}), **config}
+        if not merged.get("enabled", True):
+            return
+
+        execution_log = getattr(self, "_last_execution_log", "")
+        if not execution_log or len(execution_log) < 100:
+            return
+
+        try:
+            max_len = merged.get("max_log_chars", 3500)
+            if len(execution_log) > max_len:
+                head = execution_log[:500]
+                tail = execution_log[-(max_len - 500):]
+                truncated_log = head + "\n...[truncated]...\n" + tail
+            else:
+                truncated_log = execution_log
+
+            prompt = f"""Analyze this {self.agent_name} agent execution log and extract insights.
+
+## Execution Log
+{truncated_log}
+
+## Instructions
+Return a JSON object with:
+- "learnings": list of 0-3 concise, actionable insights worth remembering for future runs
+- "mistakes": list of 0-2 objects with keys "description", "severity" (1-5), "root_cause", "prevention"
+
+Only include genuinely useful insights. If routine with nothing notable, return empty lists.
+Return ONLY the JSON object."""
+
+            result = call_llm_json(
+                self.llm, prompt,
+                model=merged.get("model", "haiku"),
+                max_tokens=merged.get("max_tokens", 1024),
+                temperature=0.1,
+            )
+
+            project_id = state.get("project_id", "unknown")
+            for learning in result.get("learnings", []):
+                if isinstance(learning, str) and learning.strip():
+                    self.memory.add_learning(learning.strip(), category=self.agent_name.title())
+                    self.logger.info(f"Memory: added learning: {learning[:80]}")
+
+            for mistake in result.get("mistakes", []):
+                if isinstance(mistake, dict) and mistake.get("description"):
+                    self.memory.record_mistake(
+                        description=mistake["description"],
+                        severity=mistake.get("severity", 3),
+                        root_cause=mistake.get("root_cause", "Unknown"),
+                        prevention=mistake.get("prevention", "TBD"),
+                        project_id=project_id,
+                    )
+                    self.logger.info(f"Memory: recorded mistake: {mistake['description'][:80]}")
+
+        except Exception as e:
+            self.logger.warning(f"Reflection failed (non-fatal): {e}")
 
     # ------------------------------------------------------------------
     # LLM 调用
