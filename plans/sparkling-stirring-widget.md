@@ -1,219 +1,352 @@
-# ExperimentAgent 升级：Agentic Tool-Use 自治执行引擎
+# 全 Agent Agentic Tool-Use 架构升级
 
 ## Context
 
-当前 ExperimentAgent 是"生成一整段代码 → exec() 一次执行 → 看结果"的模式，太脆弱：
-- LLM 必须一次生成完美代码，无法调试
-- 无法安装缺失依赖
-- 无法读取中间结果来决策下一步
-- 无法拆分多文件项目
+当前 FARS 系统中，ExperimentAgent 已升级为 Agentic Tool-Use 模式（多轮 tool_use 循环），但其他 3 个 Agent 仍然是"单次 LLM 调用"模式：
+- **IdeationAgent**: 7+ 次独立 LLM 调用，无法迭代修正文献排序/分析
+- **PlanningAgent**: 3-6 次 LLM 调用（有简单迭代），但无法自主验证
+- **WritingAgent**: 8 个报告节独立生成 + 1 次润色，无法跨节检查一致性
 
-**目标**：升级为 **Agentic Tool-Use 循环**——LLM 像 Claude Code 一样，拥有 Bash、文件读写、Python 执行、依赖安装等工具，自主迭代完成实验。
-
-**核心改动**：用 Anthropic tool_use API 实现多轮循环，LLM 每轮决定调用哪些工具，看到结果后决定下一步。
+**目标**：将 Agentic Tool-Use 循环提升为 BaseAgent 通用能力，所有 4 个 Agent 都获得工具自治执行能力。同时集成 Playwright 浏览器、ToolRegistry 注册中心，建立工程化可维护的架构。
 
 ---
 
-## 模块结构
+## 架构设计
+
+### 核心模式
 
 ```
-agents/experiment_agent.py  → 删除（单文件）
-
-agents/experiment/           ← 新建子包
-  __init__.py               # 导出 ExperimentAgent
-  agent.py                  # ExperimentAgent 主类（继承 BaseAgent + agentic loop）
-  sandbox.py                # SandboxManager: 工作目录隔离 + 进程执行
-  tools.py                  # 6 个 Tool schema + execute_tool dispatch
-  prompts.py                # system prompt + task prompt 模板
-  metrics.py                # compute_metrics() 辅助函数（迁移）
-  CLAUDE.md                 # 模块文档
+BaseAgent._agentic_loop()     ← 通用循环（新增到 base_agent.py）
+  ↕ 调用
+ToolRegistry                   ← 每个 Agent 实例持有一个（新建 tool_registry.py）
+  ↕ 管理
+工具集 = 通用工具 + Agent 专用工具
+  ├─ bash, write_file, read_file      ← 沙箱工具 (已有 SandboxManager)
+  ├─ search_papers, read_pdf           ← 论文工具 (包装 PaperFetcher/PDFReader)
+  ├─ search_knowledge_graph            ← 知识图谱工具 (包装 KG)
+  ├─ browse_webpage, google_search     ← 浏览器工具 (新建 BrowserManager)
+  └─ submit_result                     ← 提交工具 (每个 Agent 不同 schema)
 ```
 
----
-
-## 修改文件清单
-
-| 文件 | 操作 | 说明 |
-|------|------|------|
-| `agents/experiment/agent.py` | **新建** | ExperimentAgent 主类 + _agentic_loop |
-| `agents/experiment/sandbox.py` | **新建** | SandboxManager |
-| `agents/experiment/tools.py` | **新建** | Tool schema + dispatch |
-| `agents/experiment/prompts.py` | **新建** | Prompt 模板 |
-| `agents/experiment/metrics.py` | **新建** | compute_metrics 迁移 |
-| `agents/experiment/__init__.py` | **新建** | 导出 |
-| `agents/experiment/CLAUDE.md` | **新建** | 模块文档 |
-| `agents/experiment_agent.py` | **删除** | 被子包替代 |
-| `agents/__init__.py` | **小改** | import 路径改为 `.experiment` |
-| `config/agent_config.py` | **小改** | 增加 max_agent_turns/sandbox_timeout 配置 |
-| `agents/CLAUDE.md` | **小改** | 更新描述 |
-| 根 `CLAUDE.md` | **小改** | 更新描述 |
-
-**不改**：`core/pipeline.py`、`core/state.py`、`agents/base_agent.py`、`agents/writing_agent.py`、`market_data/*`
-
----
-
-## 核心设计
-
-### 1. Agentic Loop（`agent.py` 核心流程）
-
-```
-_execute(state)
-  │
-  ├─ Step 1: 数据准备
-  │    └─ data_fetcher.fetch(data_config) → dict[str, DataFrame]
-  │
-  ├─ Step 2: 创建 Sandbox
-  │    ├─ SandboxManager.create(experiment_id)
-  │    ├─ inject_data(data_dict)     → 写 CSV 到 sandbox/data/
-  │    └─ inject_helpers()           → 写 compute_metrics.py
-  │
-  ├─ Step 3: Agentic Tool-Use 循环
-  │    │
-  │    │  messages = [user: task_prompt]
-  │    │
-  │    │  FOR turn = 1 TO MAX_TURNS (30):
-  │    │    response = llm.messages.create(
-  │    │      model, system=system_prompt, tools=ALL_TOOLS, messages
-  │    │    )
-  │    │    messages.append(assistant: response.content)
-  │    │
-  │    │    IF stop_reason == "end_turn": BREAK
-  │    │    IF stop_reason == "tool_use":
-  │    │      FOR EACH tool_use block:
-  │    │        IF name == "submit_result":
-  │    │          → 保存结果, BREAK
-  │    │        ELSE:
-  │    │          → execute_tool(name, input, sandbox)
-  │    │      messages.append(user: tool_results)
-  │    │
-  │    └─ 返回 (submitted_results, execution_log)
-  │
-  ├─ Step 4: 结果映射
-  │    ├─ _analyze_results() → LLM 评估质量
-  │    └─ _map_to_backtest_results() → BacktestResults
-  │
-  └─ Step 5: 保存 + KG 更新
-```
-
-### 2. 六个工具定义（`tools.py`）
-
-| 工具 | 用途 | input_schema |
-|------|------|-------------|
-| `bash` | 执行 shell 命令（pip install、ls、数据处理等） | `{command: str}` |
-| `write_file` | 写文件到 sandbox | `{path: str, content: str}` |
-| `read_file` | 读 sandbox 中的文件 | `{path: str}` |
-| `delete_file` | 删除 sandbox 中的文件 | `{path: str}` |
-| `run_python` | 运行 Python 脚本（subprocess） | `{script_path: str}` |
-| `submit_result` | 提交最终结果（**结束循环**） | `{results: {metrics: {...}, description: str}}` |
-
-每个 tool 是一个 Anthropic API 格式的 dict（name + description + input_schema）。`execute_tool()` 函数统一分发。
-
-### 3. SandboxManager（`sandbox.py`）
+### 子类只需实现 4 个钩子
 
 ```python
-class SandboxManager:
-    def create(experiment_id) → Path        # 创建隔离工作目录
-    def inject_data(data_dict)              # DataFrame → CSV 文件 + manifest
-    def inject_helpers()                    # 写 compute_metrics.py
-    def run_command(command) → {stdout, stderr, returncode}
-    def run_python(script_path) → {stdout, stderr, returncode}
-    def read_file(path) → str
-    def write_file(path, content)
-    def delete_file(path)
+class MyAgent(BaseAgent):
+    def _register_tools(self, state):     # 注册工具到 self.tool_registry
+    def _build_tool_system_prompt(self, state):  # 构建 system prompt
+    def _build_task_prompt(self, state):   # 构建初始 user message
+    def _on_submit_result(self, results, state):  # 映射结果到 state
 ```
-
-**安全机制**：
-- **路径隔离**：`_resolve_path()` 禁止逃逸 workdir
-- **命令黑名单**：禁止 `rm -rf /`、`shutdown`、`mkfs` 等
-- **进程超时**：`subprocess.run(timeout=300)`
-- **输出截断**：stdout/stderr 各截断 10000/5000 chars
-- **轮次限制**：MAX_TURNS=30 防止无限循环
-
-### 4. 数据注入方式
-
-不再用 exec namespace 注入，改为文件系统：
-
-```
-sandbox/
-  data/
-    SPY.csv                 # DataFrame.to_csv()
-    AAPL.csv
-  data_manifest.json        # {"SPY": "data/SPY.csv", ...}
-  compute_metrics.py        # 辅助函数源码
-```
-
-LLM 在 system prompt 中被告知：
-- `pd.read_csv("data/SPY.csv", index_col=0, parse_dates=True)` 加载数据
-- `from compute_metrics import compute_metrics` 导入辅助函数
-
-### 5. Prompt 设计（`prompts.py`）
-
-**System Prompt** 核心要素：
-- 角色：量化金融研究员 + Python 程序员
-- 工具说明：6 个工具的用途
-- 工作流程：读 manifest → 写代码 → 运行 → 调试 → submit
-- 数据格式：CSV 列名 open/high/low/close/volume
-- compute_metrics 用法
-- submit_result 格式
-- 规则：缺包就 pip install、有错就 debug、必须 submit_result
-
-**Task Prompt** 注入：hypothesis、methodology、implementation_steps、success_criteria、data_info
-
-### 6. 与现有系统的集成
-
-- **BaseAgent**：继承不变，`_execute(state)` 接口完全兼容
-- **Pipeline**：`ExperimentAgent(llm, file_manager, data_fetcher)` 构造签名不变
-- **State**：输出字段 `experiment_code/execution_logs/results_data/validation_status` 不变
-- **WritingAgent**：读取 `BacktestResults` 格式不变
-- **agents/__init__.py**：`from .experiment_agent` → `from .experiment`
 
 ---
 
-## 实施步骤
+## 文件结构
 
-1. 创建 `agents/experiment/` 目录
-2. 写 `metrics.py`（从原文件迁移 compute_metrics）
-3. 写 `sandbox.py`（SandboxManager）
-4. 写 `tools.py`（6 个 tool schema + execute_tool）
-5. 写 `prompts.py`（system/task prompt 模板）
-6. 写 `agent.py`（ExperimentAgent + _agentic_loop）
-7. 写 `__init__.py`
-8. 更新 `agents/__init__.py`（import 路径）
-9. 更新 `config/agent_config.py`（新增配置项）
-10. 删除 `agents/experiment_agent.py`
-11. 写 `agents/experiment/CLAUDE.md`
-12. 更新 `agents/CLAUDE.md`、根 `CLAUDE.md`
+```
+agents/
+  base_agent.py               [修改] 新增 _agentic_loop, _register_tools, call_llm_tools
+  llm.py                      [修改] 新增 call_llm_tools()
+  tool_registry.py             [新建] ToolRegistry 类
+  browser_manager.py           [新建] Playwright BrowserManager
+  __init__.py                  [修改] 更新导入路径
+
+  ideation/                    [新建] 从 ideation_agent.py 拆出
+    __init__.py
+    agent.py                   IdeationAgent 主类
+    tools.py                   7 个工具 schema + executor
+    prompts.py                 system/task prompt 模板
+
+  planning/                    [新建] 从 planning_agent.py 拆出
+    __init__.py
+    agent.py                   PlanningAgent 主类
+    tools.py                   5 个工具 schema + executor
+    prompts.py                 system/task prompt 模板
+
+  experiment/                  [修改] 适配 BaseAgent._agentic_loop
+    agent.py                   删除内联 loop，用 base loop
+    tools.py                   适配 ToolRegistry 格式
+    sandbox.py                 不变
+    prompts.py                 不变
+    metrics.py                 不变
+
+  writing/                     [新建] 从 writing_agent.py 拆出
+    __init__.py
+    agent.py                   WritingAgent 主类
+    tools.py                   6 个工具 schema + executor
+    prompts.py                 system/task prompt 模板
+
+  ideation_agent.py            [删除]
+  planning_agent.py            [删除]
+  writing_agent.py             [删除]
+
+core/
+  pipeline.py                  [修改] 更新 import 路径
+
+config/
+  agent_config.py              [修改] 每个 Agent 增加 max_agent_turns/max_tokens
+```
 
 ---
 
-## 验证
+## 各 Agent 工具列表
 
-1. `python -c "import ast; ast.parse(open('agents/experiment/agent.py', encoding='utf-8').read())"`（所有新文件）
-2. `python -c "from agents.experiment import ExperimentAgent; print('OK')"`
-3. `python -c "from agents import ExperimentAgent; print('OK')"`
-4. AST 验证 ExperimentAgent 包含 `_execute`, `_agentic_loop`, `_map_to_backtest_results`, `_analyze_results`
-5. 验证 SandboxManager 路径隔离（尝试逃逸路径）
-6. 验证 tool schema 符合 Anthropic API 格式
-7. `pipeline.py` 中 ExperimentAgent 的 import 和实例化无需修改
+### IdeationAgent (7 工具)
+
+| 工具 | 描述 | 后端 |
+|------|------|------|
+| `search_papers` | 按关键词搜索 arXiv 论文 | PaperFetcher.fetch_papers_by_keywords |
+| `fetch_recent_papers` | 获取最近论文 | PaperFetcher.fetch_recent_papers |
+| `download_and_read_pdf` | 下载 PDF 并提取全文+分段 | PDFReader.download_pdf + extract_text + extract_sections |
+| `search_knowledge_graph` | 查询知识图谱 | KnowledgeGraph.search_knowledge |
+| `browse_webpage` | 浏览网页 | BrowserManager.browse |
+| `google_search` | Google 搜索 | BrowserManager.search_google |
+| `submit_result` | 提交：papers_reviewed, literature_summary, research_gaps, hypothesis | 特殊处理 |
+
+### PlanningAgent (5 工具)
+
+| 工具 | 描述 | 后端 |
+|------|------|------|
+| `read_upstream_file` | 读取上游产出文件 | FileManager.load_json/load_text |
+| `search_knowledge_graph` | 查询知识图谱 | KnowledgeGraph.search_knowledge |
+| `browse_webpage` | 浏览网页验证数据可用性 | BrowserManager.browse |
+| `google_search` | Google 搜索方法论参考 | BrowserManager.search_google |
+| `submit_result` | 提交：experiment_plan, methodology, expected_outcomes, data_config | 特殊处理 |
+
+### ExperimentAgent (8 工具，在已有 6 个基础上加 2 个)
+
+| 工具 | 描述 | 后端 |
+|------|------|------|
+| `bash` | 执行 shell 命令 | SandboxManager.run_command |
+| `write_file` | 写文件到 sandbox | SandboxManager.write_file |
+| `read_file` | 读取 sandbox 文件 | SandboxManager.read_file |
+| `delete_file` | 删除 sandbox 文件 | SandboxManager.delete_file |
+| `run_python` | 运行 Python 脚本 | SandboxManager.run_python |
+| `browse_webpage` | 浏览网页查文档 | BrowserManager.browse |
+| `google_search` | Google 搜索调试信息 | BrowserManager.search_google |
+| `submit_result` | 提交：metrics + description | 特殊处理 |
+
+### WritingAgent (6 工具)
+
+| 工具 | 描述 | 后端 |
+|------|------|------|
+| `read_upstream_file` | 读取所有上游产出 | FileManager.load_json/load_text |
+| `write_section` | 写入报告节到文件 | FileManager.save_text |
+| `run_python` | 运行可视化脚本生成图表 | SandboxManager.run_python |
+| `browse_webpage` | 浏览网页补充信息 | BrowserManager.browse |
+| `google_search` | Google 搜索参考资料 | BrowserManager.search_google |
+| `submit_result` | 提交：report_draft, final_report | 特殊处理 |
+
+---
+
+## 核心代码接口
+
+### ToolRegistry (agents/tool_registry.py)
+
+```python
+class ToolRegistry:
+    def register(name, schema, executor) -> self       # 注册单个工具
+    def register_many([(name, schema, executor)]) -> self  # 批量注册
+    def get_schemas() -> list[dict]                    # 返回 Anthropic API 格式
+    def execute(name, tool_input, **context) -> str    # 执行工具
+    def get_tool_names() -> list[str]
+```
+
+- **schema**: Anthropic API tool 格式 `{name, description, input_schema}`
+- **executor**: `(tool_input: dict, **context) -> str`，context 用于传递 sandbox/paper_fetcher 等运行时对象
+- 每个 Agent 实例持有独立 ToolRegistry 实例
+
+### BaseAgent 新增 (agents/base_agent.py)
+
+```python
+class BaseAgent:
+    # 新增属性
+    tool_registry: ToolRegistry        # 在 __call__ 中重建
+    _submit_result_key = "submit_result"
+
+    # 新增钩子（子类覆盖）
+    def _register_tools(self, state)              # 注册工具
+    def _build_tool_system_prompt(self, state)     # 构建 tool-use system prompt
+    def _build_task_prompt(self, state)             # 构建初始 task prompt
+    def _on_submit_result(self, results, state)    # 映射 submit 结果到 state
+
+    # 新增方法
+    def _agentic_loop(self, state, max_turns=None, **tool_context) -> (dict|None, str)
+    def call_llm_tools(self, prompt, tools=None, **kwargs) -> response
+```
+
+- `_register_tools()` 默认空实现 → 不注册工具的旧 Agent 行为不变
+- `_agentic_loop()` 是可选方法，子类在 `_execute()` 中决定是否调用
+- `__call__` 中在 `_execute()` 前调用 `_register_tools()`
+
+### BrowserManager (agents/browser_manager.py)
+
+```python
+class BrowserManager:
+    @classmethod get_instance() -> BrowserManager   # 单例模式
+    def browse(url, extract_text=True, max_text_length=10000) -> dict
+    def search_google(query, max_results=5) -> list[dict]
+    def cleanup()
+```
+
+- 惰性初始化 Playwright Chromium（headless）
+- Playwright 不可用时 browse 工具不注册（graceful degradation）
+- 每次 browse 创建新 page、用完关闭
+
+### llm.py 新增
+
+```python
+def call_llm_tools(client, prompt, tools, system_prompt, model, max_tokens, temperature) -> response
+    # 带 tools 参数的 LLM 调用，返回原始 response 对象
+```
+
+---
+
+## 实施阶段
+
+### Phase 1: 基础设施
+
+**新建**:
+- `agents/tool_registry.py` — ToolRegistry 类
+- `agents/browser_manager.py` — BrowserManager (Playwright)
+
+**修改**:
+- `agents/base_agent.py` — 新增 `_agentic_loop`, `_register_tools`, `_build_tool_system_prompt`, `_build_task_prompt`, `_on_submit_result`, `call_llm_tools`；修改 `__call__`
+- `agents/llm.py` — 新增 `call_llm_tools()`
+
+**验证**: AST 解析；现有 Agent 不注册工具时行为不变
+
+### Phase 2: ExperimentAgent 适配
+
+**修改**:
+- `agents/experiment/agent.py` — 删除内联 `_agentic_loop`，改用 `BaseAgent._agentic_loop`；实现 `_register_tools`, `_build_tool_system_prompt`, `_build_task_prompt`, `_on_submit_result`
+- `agents/experiment/tools.py` — 将 TOOL_SCHEMAS + execute_tool 适配为 ToolRegistry 的 `(name, schema, executor)` 格式
+
+**验证**: `from agents.experiment import ExperimentAgent` 成功；AST 验证必需方法存在
+
+### Phase 3: IdeationAgent 升级
+
+**新建**:
+- `agents/ideation/__init__.py`
+- `agents/ideation/agent.py`
+- `agents/ideation/tools.py` — 7 个工具
+- `agents/ideation/prompts.py`
+
+**修改**:
+- `agents/__init__.py` — `from .ideation import IdeationAgent`
+- `core/pipeline.py` — 更新 import
+
+**删除**: `agents/ideation_agent.py`
+
+**验证**: `from agents import IdeationAgent` 成功；构造签名 `IdeationAgent(llm, paper_fetcher, file_manager, pdf_reader=pdf_reader)` 不变
+
+### Phase 4: PlanningAgent 升级
+
+**新建**:
+- `agents/planning/__init__.py`
+- `agents/planning/agent.py`
+- `agents/planning/tools.py` — 5 个工具
+- `agents/planning/prompts.py`
+
+**修改**:
+- `agents/__init__.py` — `from .planning import PlanningAgent`
+- `core/pipeline.py` — 更新 import
+
+**删除**: `agents/planning_agent.py`
+
+**验证**: `from agents import PlanningAgent` 成功；构造签名 `PlanningAgent(llm, file_manager)` 不变
+
+### Phase 5: WritingAgent 升级
+
+**新建**:
+- `agents/writing/__init__.py`
+- `agents/writing/agent.py`
+- `agents/writing/tools.py` — 6 个工具
+- `agents/writing/prompts.py`
+
+**修改**:
+- `agents/__init__.py` — `from .writing import WritingAgent`
+- `core/pipeline.py` — 更新 import
+
+**删除**: `agents/writing_agent.py`
+
+**验证**: `from agents import WritingAgent` 成功；构造签名 `WritingAgent(llm, file_manager)` 不变
+
+### Phase 6: 配置 + 文档
+
+**修改**:
+- `config/agent_config.py` — 每个 Agent 增加 `max_agent_turns`, `max_tokens`
+- 所有 CLAUDE.md（根目录、agents/、各子包）
+- 文件头注释更新
+
+---
+
+## Pipeline 兼容性
+
+`core/pipeline.py` 只需更新 import 路径：
+
+```python
+# 旧
+from agents.ideation_agent import IdeationAgent
+from agents.planning_agent import PlanningAgent
+
+# 新
+from agents.ideation import IdeationAgent
+from agents.planning import PlanningAgent
+```
+
+构造签名完全不变。State 输出字段完全不变。
+
+---
+
+## 验证清单
+
+每个 Phase 完成后验证：
+
+1. `python -c "import ast; ast.parse(open(file, encoding='utf-8').read())"` — 所有新/改文件
+2. `python -c "from agents import IdeationAgent, PlanningAgent, ExperimentAgent, WritingAgent; print('OK')"` — 导入成功
+3. AST 验证每个 Agent 包含 `_execute`, `_register_tools`, `_build_tool_system_prompt`, `_build_task_prompt`, `_on_submit_result`
+4. `BaseAgent._agentic_loop` 存在且签名正确
+5. `ToolRegistry.register/execute/get_schemas` 方法存在
+6. `BrowserManager.browse/search_google/cleanup` 方法存在
+7. `pipeline.py` 中所有 Agent 的 import 和构造函数无需修改（除 import 路径）
 
 ---
 
 ## Checklist
 
-**新建 `agents/experiment/`**：
-- [ ] `metrics.py` — compute_metrics 迁移
-- [ ] `sandbox.py` — SandboxManager（create/inject_data/inject_helpers/run_command/run_python/read_file/write_file/delete_file）
-- [ ] `tools.py` — 6 个 tool schema（bash/write_file/read_file/delete_file/run_python/submit_result）+ execute_tool dispatch
-- [ ] `prompts.py` — SYSTEM_PROMPT_TEMPLATE + TASK_PROMPT_TEMPLATE
-- [ ] `agent.py` — ExperimentAgent._execute + _agentic_loop + _map_to_backtest_results + _analyze_results + _describe_data + _collect_code_from_sandbox + _generate_execution_summary
-- [ ] `__init__.py` — 导出 ExperimentAgent
-- [ ] `CLAUDE.md` — 模块文档
+**Phase 1 基础设施**:
+- [x] `agents/tool_registry.py` — ToolRegistry 类
+- [x] `agents/browser_manager.py` — BrowserManager (Playwright)
+- [x] `agents/base_agent.py` — 新增 _agentic_loop + 钩子方法
+- [x] `agents/llm.py` — 新增 call_llm_tools()
 
-**修改**：
-- [ ] `agents/__init__.py` — `from .experiment import ExperimentAgent`
-- [ ] `config/agent_config.py` — 增加 max_agent_turns / sandbox_timeout / sandbox_cleanup
-- [ ] 删除 `agents/experiment_agent.py`
+**Phase 2 ExperimentAgent**:
+- [x] `agents/experiment/agent.py` — 迁移到 BaseAgent._agentic_loop
+- [x] `agents/experiment/tools.py` — 适配 ToolRegistry 格式
 
-**文档**：
-- [ ] `agents/CLAUDE.md` 更新
-- [ ] 根 `CLAUDE.md` 更新
+**Phase 3 IdeationAgent**:
+- [x] `agents/ideation/__init__.py`
+- [x] `agents/ideation/agent.py`
+- [x] `agents/ideation/tools.py` (7 工具)
+- [x] `agents/ideation/prompts.py`
+- [x] 删除 `agents/ideation_agent.py`
+
+**Phase 4 PlanningAgent**:
+- [x] `agents/planning/__init__.py`
+- [x] `agents/planning/agent.py`
+- [x] `agents/planning/tools.py` (5 工具)
+- [x] `agents/planning/prompts.py`
+- [x] 删除 `agents/planning_agent.py`
+
+**Phase 5 WritingAgent**:
+- [x] `agents/writing/__init__.py`
+- [x] `agents/writing/agent.py`
+- [x] `agents/writing/tools.py` (6 工具)
+- [x] `agents/writing/prompts.py`
+- [x] 删除 `agents/writing_agent.py`
+
+**Phase 6 配置+文档**:
+- [x] `config/agent_config.py` 更新
+- [x] `agents/__init__.py` 更新
+- [x] `core/pipeline.py` 更新 import
+- [x] 所有 CLAUDE.md 更新

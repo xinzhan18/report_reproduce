@@ -24,10 +24,10 @@ Connects all four agents in a workflow with error handling and checkpointing.
 from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 from core.state import ResearchState, create_initial_state
-from agents.ideation_agent import IdeationAgent
-from agents.planning_agent import PlanningAgent
-from agents.experiment_agent import ExperimentAgent
-from agents.writing_agent import WritingAgent
+from agents.ideation import IdeationAgent
+from agents.planning import PlanningAgent
+from agents.experiment import ExperimentAgent
+from agents.writing import WritingAgent
 from tools.paper_fetcher import PaperFetcher
 from tools.file_manager import FileManager
 from market_data import DataFetcher

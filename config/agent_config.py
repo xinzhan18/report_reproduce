@@ -20,6 +20,8 @@ AGENT_CONFIG: Dict[str, Dict[str, Any]] = {
         "name": "Ideation Agent",
         "model": "sonnet",  # Use Sonnet for complex analysis
         "temperature": 0.7,  # Higher creativity for hypothesis generation
+        "max_tokens": 4096,  # Max tokens per LLM call
+        "max_agent_turns": 25,  # Maximum tool-use loop iterations
         "max_papers_per_scan": 50,
         "min_papers_for_trigger": 5,  # Minimum papers to trigger pipeline
         "focus_categories": [
@@ -53,14 +55,15 @@ AGENT_CONFIG: Dict[str, Dict[str, Any]] = {
         "name": "Planning Agent",
         "model": "sonnet",  # Use Sonnet for systematic planning
         "temperature": 0.3,  # Lower temperature for structured planning
-        "max_iterations": 3,  # Maximum plan revision attempts
-        "require_feasibility_check": True,
+        "max_tokens": 4096,  # Max tokens per LLM call
+        "max_agent_turns": 15,  # Maximum tool-use loop iterations
     },
 
     "experiment": {
         "name": "Experiment Agent",
         "model": "sonnet",  # Use Sonnet for code generation
         "temperature": 0.2,  # Low temperature for precise code
+        "max_tokens": 4096,  # Max tokens per LLM call
         "max_retries": 2,  # Retry failed experiments (controls pipeline retry)
         "max_agent_turns": 30,  # Maximum tool-use loop iterations
         "sandbox_timeout": 300,  # Per-command timeout in seconds
@@ -77,6 +80,8 @@ AGENT_CONFIG: Dict[str, Dict[str, Any]] = {
         "name": "Writing Agent",
         "model": "sonnet",  # Use Sonnet for high-quality writing
         "temperature": 0.4,  # Balanced creativity and structure
+        "max_tokens": 8192,  # Higher tokens for report generation
+        "max_agent_turns": 20,  # Maximum tool-use loop iterations
         "report_format": "markdown",  # Output format
         "include_visualizations": True,
         "citation_style": "APA",  # Or "IEEE", "Chicago", etc.

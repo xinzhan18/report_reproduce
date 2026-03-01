@@ -6,7 +6,7 @@ LLM 调用模块 - 无状态函数式接口
 """
 
 # INPUT:  config.llm_config (模型名称解析), anthropic SDK, json, re, time, logging
-# OUTPUT: call_llm(), call_llm_json(), extract_json()
+# OUTPUT: call_llm(), call_llm_json(), call_llm_tools(), extract_json()
 # POSITION: Agent层 LLM 调用工具
 
 import json
@@ -93,3 +93,55 @@ def call_llm_json(
     """调用 LLM 并解析返回的 JSON。"""
     text = call_llm(client, prompt, system_prompt, model, max_tokens, temperature, max_retries)
     return extract_json(text)
+
+
+def call_llm_tools(
+    client,
+    messages: list,
+    tools: list[dict],
+    system_prompt: str = "",
+    model: str = "sonnet",
+    max_tokens: int = 4096,
+    temperature: float = 0.2,
+    max_retries: int = 3,
+):
+    """带 tools 参数的 LLM 调用，返回原始 response 对象。
+
+    Args:
+        client: Anthropic client
+        messages: 消息列表 (Anthropic API 格式)
+        tools: 工具 schema 列表 (Anthropic API 格式)
+        system_prompt: system prompt
+        model: 模型名称 (sonnet/opus/haiku)
+        max_tokens: 最大 token 数
+        temperature: 温度
+        max_retries: 最大重试次数
+
+    Returns:
+        Anthropic API response 对象
+    """
+    model_id = get_model_name(model)
+    last_error = None
+
+    for attempt in range(max_retries):
+        try:
+            response = client.messages.create(
+                model=model_id,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_prompt,
+                tools=tools,
+                messages=messages,
+            )
+            return response
+
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt
+                logger.warning(f"LLM tools call attempt {attempt + 1} failed: {e}. Retrying in {wait}s...")
+                time.sleep(wait)
+            else:
+                logger.error(f"All {max_retries} attempts exhausted for tools call")
+
+    raise last_error

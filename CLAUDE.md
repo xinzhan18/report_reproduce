@@ -29,10 +29,13 @@ This system automates quantitative finance research from literature review throu
 │   - LangGraph workflow, state routing                      │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 3: Agents (agents/)                                  │
-│   - BaseAgent, IdeationAgent, PlanningAgent,               │
-│     ExperimentAgent (agents/experiment/ agentic tool-use), │
-│     WritingAgent                                            │
-│   - agents/llm.py (call_llm / call_llm_json)              │
+│   - BaseAgent + _agentic_loop() 通用 Tool-Use 循环        │
+│   - ToolRegistry, BrowserManager                           │
+│   - IdeationAgent (agents/ideation/ 子包, 7 工具)          │
+│   - PlanningAgent (agents/planning/ 子包, 5 工具)          │
+│   - ExperimentAgent (agents/experiment/ 子包, 8 工具)      │
+│   - WritingAgent (agents/writing/ 子包, 6 工具)            │
+│   - agents/llm.py (call_llm / call_llm_json / call_llm_tools) │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 2: Intelligence & State (core/)                      │
 │   - State management, Memory system, Knowledge graph       │
@@ -60,7 +63,7 @@ Scheduler → Pipeline → Agents → Tools/MarketData → Data Storage
 
 每个模块都有独立的CLAUDE.md文档：
 
-- **agents/** - AI智能体层 (BaseAgent + 4个核心Agent + llm.py; ExperimentAgent 为 agents/experiment/ 子包，Agentic Tool-Use 引擎)
+- **agents/** - AI智能体层 (BaseAgent + ToolRegistry + BrowserManager + llm.py; 4 个 Agent 均为子包，全部采用 Agentic Tool-Use 引擎: ideation/7工具, planning/5工具, experiment/8工具, writing/6工具)
 - **config/** - 系统配置层 (LLM、认证、数据源配置)
 - **core/** - 核心基础设施层 (状态、Pipeline、AgentMemory、知识图谱、数据库)
 - **data/** - Agent记忆数据 (persona.md, memory.md, mistakes.md, daily/)

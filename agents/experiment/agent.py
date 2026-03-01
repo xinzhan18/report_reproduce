@@ -1,19 +1,19 @@
 """
 ExperimentAgent — Agentic Tool-Use 自治执行引擎
 
-Pipeline 第三阶段：LLM 拥有 bash、文件读写、Python 执行、依赖安装等工具，
-通过多轮 tool_use 循环自主迭代完成实验。
+Pipeline 第三阶段：通过 BaseAgent._agentic_loop() 实现多轮 tool_use 循环，
+LLM 拥有 bash、文件读写、Python 执行等工具，自主迭代完成实验。
 """
 
 # INPUT:  agents.base_agent (BaseAgent), core.state (ResearchState, ExperimentPlan, BacktestResults),
 #         tools.file_manager (FileManager), market_data (DataFetcher),
 #         agents.experiment.sandbox (SandboxManager),
-#         agents.experiment.tools (TOOL_SCHEMAS, execute_tool),
+#         agents.experiment.tools (get_tool_definitions),
 #         agents.experiment.prompts (SYSTEM_PROMPT_TEMPLATE, build_task_prompt),
-#         config.llm_config (get_model_name), json, logging
+#         agents.browser_manager (BrowserManager, is_playwright_available)
 # OUTPUT: ExperimentAgent 类
 # POSITION: Agent层 - 实验智能体，Pipeline 第三阶段
-#           Agentic Tool-Use 循环执行引擎
+#           通过 BaseAgent._agentic_loop() 驱动的 Agentic Tool-Use 执行引擎
 
 from typing import Dict, Any
 import json
@@ -25,11 +25,11 @@ from agents.base_agent import BaseAgent
 from core.state import ResearchState, ExperimentPlan, BacktestResults
 from tools.file_manager import FileManager
 from market_data import DataFetcher
-from config.llm_config import get_model_name
 
 from agents.experiment.sandbox import SandboxManager
-from agents.experiment.tools import TOOL_SCHEMAS, execute_tool
+from agents.experiment.tools import get_tool_definitions
 from agents.experiment.prompts import SYSTEM_PROMPT_TEMPLATE, build_task_prompt
+from agents.browser_manager import BrowserManager, is_playwright_available
 
 logger = logging.getLogger("agents.experiment")
 
@@ -41,6 +41,36 @@ class ExperimentAgent(BaseAgent):
                  data_fetcher: DataFetcher):
         super().__init__(llm, file_manager, "experiment",
                          data_fetcher=data_fetcher)
+
+    # ==================================================================
+    # Agentic 钩子
+    # ==================================================================
+
+    def _register_tools(self, state: ResearchState):
+        """注册沙箱工具 + 浏览器工具到 ToolRegistry。"""
+        include_browser = is_playwright_available()
+        tool_defs = get_tool_definitions(include_browser=include_browser)
+        self.tool_registry.register_many(tool_defs)
+        self.logger.info(f"Registered {len(tool_defs)} tools: {self.tool_registry.get_tool_names()}")
+
+    def _build_tool_system_prompt(self, state: ResearchState) -> str:
+        """构建 experiment system prompt。"""
+        agent_memory = self._system_prompt
+        return SYSTEM_PROMPT_TEMPLATE.format(agent_memory=agent_memory)
+
+    def _build_task_prompt(self, state: ResearchState) -> str:
+        """构建 experiment task prompt。"""
+        return build_task_prompt(
+            hypothesis=state["hypothesis"],
+            methodology=state["methodology"],
+            implementation_steps=state["experiment_plan"]["implementation_steps"],
+            success_criteria=state["experiment_plan"]["success_criteria"],
+            data_info=state.get("_data_info", ""),
+        )
+
+    def _on_submit_result(self, results: dict, state: ResearchState):
+        """submit_result 不在此处理，由 _execute 处理结果映射。"""
+        pass
 
     # ==================================================================
     # 主流程
@@ -67,6 +97,7 @@ class ExperimentAgent(BaseAgent):
             return state
 
         data_info = self._describe_data(data_dict, data_config)
+        state["_data_info"] = data_info  # 供 _build_task_prompt 使用
         total_rows = sum(len(df) for df in data_dict.values())
         self.logger.info(f"Data ready: {len(data_dict)} symbol(s), {total_rows} total rows")
 
@@ -78,18 +109,15 @@ class ExperimentAgent(BaseAgent):
         sandbox.inject_helpers()
         self.logger.info(f"Sandbox created at: {sandbox.workdir}")
 
-        # Step 3: Agentic Tool-Use 循环
-        max_turns = self.config.get("max_agent_turns", 30)
+        # Step 3: 构建 tool context 并运行 agentic loop
         sandbox_timeout = self.config.get("sandbox_timeout", 300)
+        browser = BrowserManager.get_instance() if is_playwright_available() else None
 
         submitted_results, execution_log = self._agentic_loop(
-            hypothesis=hypothesis,
-            experiment_plan=experiment_plan,
-            methodology=methodology,
-            data_info=data_info,
+            state=state,
             sandbox=sandbox,
-            max_turns=max_turns,
-            sandbox_timeout=sandbox_timeout,
+            timeout=sandbox_timeout,
+            browser=browser,
         )
 
         # Step 4: 结果映射
@@ -168,127 +196,10 @@ class ExperimentAgent(BaseAgent):
         if self.config.get("sandbox_cleanup", True):
             sandbox.cleanup()
 
+        # 清理临时 state key
+        state.pop("_data_info", None)
+
         return state
-
-    # ==================================================================
-    # Agentic Tool-Use 循环
-    # ==================================================================
-
-    def _agentic_loop(
-        self,
-        hypothesis: str,
-        experiment_plan: ExperimentPlan,
-        methodology: str,
-        data_info: str,
-        sandbox: SandboxManager,
-        max_turns: int = 30,
-        sandbox_timeout: int = 300,
-    ) -> tuple[dict | None, str]:
-        """多轮 tool_use 循环。返回 (submitted_results, execution_log)。"""
-
-        # 构建 prompts
-        agent_memory = self._system_prompt  # BaseAgent 在 __call__ 中已构建
-        system_prompt = SYSTEM_PROMPT_TEMPLATE.format(agent_memory=agent_memory)
-
-        task_prompt = build_task_prompt(
-            hypothesis=hypothesis,
-            methodology=methodology,
-            implementation_steps=experiment_plan["implementation_steps"],
-            success_criteria=experiment_plan["success_criteria"],
-            data_info=data_info,
-        )
-
-        model_id = get_model_name(self.config.get("model", "sonnet"))
-        messages = [{"role": "user", "content": task_prompt}]
-        log_lines = []
-        submitted_results = None
-
-        for turn in range(1, max_turns + 1):
-            self.logger.info(f"--- Agentic Turn {turn}/{max_turns} ---")
-            log_lines.append(f"\n{'='*40} Turn {turn} {'='*40}")
-
-            try:
-                response = self.llm.messages.create(
-                    model=model_id,
-                    max_tokens=4096,
-                    temperature=self.config.get("temperature", 0.2),
-                    system=system_prompt,
-                    tools=TOOL_SCHEMAS,
-                    messages=messages,
-                )
-            except Exception as e:
-                self.logger.error(f"LLM API call failed: {e}")
-                log_lines.append(f"[ERROR] LLM API call failed: {e}")
-                break
-
-            # 记录 assistant response
-            messages.append({"role": "assistant", "content": response.content})
-
-            # 记录文本输出
-            for block in response.content:
-                if block.type == "text" and block.text.strip():
-                    self.logger.info(f"LLM: {block.text[:200]}")
-                    log_lines.append(f"[LLM] {block.text}")
-
-            # 检查 stop reason
-            if response.stop_reason == "end_turn":
-                self.logger.info("LLM ended turn without tool use")
-                log_lines.append("[INFO] LLM ended turn (no tool call)")
-                break
-
-            if response.stop_reason != "tool_use":
-                self.logger.info(f"Unexpected stop_reason: {response.stop_reason}")
-                log_lines.append(f"[INFO] Stop reason: {response.stop_reason}")
-                break
-
-            # 处理 tool_use blocks
-            tool_results = []
-            should_break = False
-
-            for block in response.content:
-                if block.type != "tool_use":
-                    continue
-
-                tool_name = block.name
-                tool_input = block.input
-                tool_use_id = block.id
-
-                self.logger.info(f"Tool: {tool_name}({json.dumps(tool_input)[:200]})")
-                log_lines.append(f"[TOOL] {tool_name}: {json.dumps(tool_input)[:500]}")
-
-                # submit_result 特殊处理：截获结果，结束循环
-                if tool_name == "submit_result":
-                    submitted_results = tool_input.get("results", tool_input)
-                    self.logger.info(f"Results submitted: {json.dumps(submitted_results)[:300]}")
-                    log_lines.append(f"[SUBMIT] {json.dumps(submitted_results)[:1000]}")
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": "Results submitted successfully. Experiment complete.",
-                    })
-                    should_break = True
-                else:
-                    # 执行工具
-                    result_str = execute_tool(tool_name, tool_input, sandbox, timeout=sandbox_timeout)
-                    log_lines.append(f"[RESULT] {result_str[:500]}")
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tool_use_id,
-                        "content": result_str,
-                    })
-
-            # 将 tool results 追加为 user message
-            messages.append({"role": "user", "content": tool_results})
-
-            if should_break:
-                break
-
-        else:
-            self.logger.warning(f"Agentic loop reached max turns ({max_turns})")
-            log_lines.append(f"[WARNING] Reached max turns ({max_turns})")
-
-        execution_log = "\n".join(log_lines)
-        return submitted_results, execution_log
 
     # ==================================================================
     # 结果分析
