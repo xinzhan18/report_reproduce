@@ -3,26 +3,32 @@ ExperimentAgent — Agentic Tool-Use 自治执行引擎
 
 Pipeline 第三阶段：通过 BaseAgent._agentic_loop() 实现多轮 tool_use 循环，
 LLM 拥有 bash、文件读写、Python 执行等工具，自主迭代完成实验。
+执行完成后回写 plan.md checklist 标记完成/失败状态，
+并将 ExperimentFeedback 写入 state 供 pipeline 路由决策。
 """
 
-# INPUT:  agents.base_agent (BaseAgent), core.state (ResearchState, ExperimentPlan, BacktestResults),
+# INPUT:  agents.base_agent (BaseAgent), core.state (ResearchState, ExperimentPlan, BacktestResults, ExperimentFeedback),
 #         tools.file_manager (FileManager), market_data (DataFetcher),
 #         agents.experiment.sandbox (SandboxManager),
 #         agents.experiment.tools (get_tool_definitions),
 #         agents.experiment.prompts (SYSTEM_PROMPT_TEMPLATE, build_task_prompt),
 #         agents.browser_manager (BrowserManager, is_playwright_available)
 # OUTPUT: ExperimentAgent 类
+#         产出文件: experiments/plan.md (回写 checklist), experiments/experiment.md (结果),
+#                  experiments/strategy.py, experiments/backtest_results.json
 # POSITION: Agent层 - 实验智能体，Pipeline 第三阶段
 #           通过 BaseAgent._agentic_loop() 驱动的 Agentic Tool-Use 执行引擎
+#           回写 plan.md checklist + 构建 experiment.md + 写入 ExperimentFeedback
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 import json
+import re
 import logging
 
 from anthropic import Anthropic
 
 from agents.base_agent import BaseAgent
-from core.state import ResearchState, ExperimentPlan, BacktestResults
+from core.state import ResearchState, ExperimentPlan, BacktestResults, ExperimentFeedback
 from tools.file_manager import FileManager
 from market_data import DataFetcher
 
@@ -59,11 +65,16 @@ class ExperimentAgent(BaseAgent):
         return SYSTEM_PROMPT_TEMPLATE.format(agent_memory=agent_memory)
 
     def _build_task_prompt(self, state: ResearchState) -> str:
-        """构建 experiment task prompt。"""
+        """构建 experiment task prompt — 读取 plan.md 作为上下文。"""
+        # 读取 plan.md
+        plan_md = self.file_manager.load_text(
+            state["project_id"], "plan.md", subdir="experiments"
+        ) or ""
+
         return build_task_prompt(
             hypothesis=state["hypothesis"],
             methodology=state["methodology"],
-            implementation_steps=state["experiment_plan"]["implementation_steps"],
+            plan_md=plan_md,
             success_criteria=state["experiment_plan"]["success_criteria"],
             data_info=state.get("_data_info", ""),
         )
@@ -80,8 +91,6 @@ class ExperimentAgent(BaseAgent):
         project_id = state["project_id"]
         hypothesis = state["hypothesis"]
         experiment_plan: ExperimentPlan = state["experiment_plan"]
-        methodology = state["methodology"]
-        max_retries = self.config.get("max_retries", 2)
 
         # Step 1: 数据准备
         self.logger.info("Preparing data...")
@@ -92,7 +101,13 @@ class ExperimentAgent(BaseAgent):
         if not data_dict:
             state["validation_status"] = "failed"
             state["error_messages"] = "Failed to fetch required data"
-            state["iteration"] = max_retries
+            state["experiment_feedback"] = ExperimentFeedback(
+                verdict="failed",
+                analysis="Data fetch failed — cannot proceed with experiment",
+                suggestions=["Check data source configuration", "Verify network connectivity"],
+                failed_steps=["Data preparation"],
+            )
+            state["iteration"] = state.get("iteration", 0) + 1
             self.logger.error("Data fetch failed")
             return state
 
@@ -130,10 +145,16 @@ class ExperimentAgent(BaseAgent):
                 self.logger.warning(f"Submitted results missing required metrics: {missing}")
                 state["validation_status"] = "failed"
                 state["error_messages"] = f"Missing required metrics: {missing}"
+                state["experiment_feedback"] = ExperimentFeedback(
+                    verdict="failed",
+                    analysis=f"Missing required metrics: {missing}",
+                    suggestions=["Ensure strategy computes all required metrics"],
+                    failed_steps=["Calculate metrics"],
+                )
             else:
                 # LLM 分析结果质量
                 analysis = self._analyze_results(metrics, experiment_plan, hypothesis)
-                verdict = analysis.get("verdict", "revise")
+                verdict = analysis.get("verdict", "revise_plan")
                 self.logger.info(f"Analysis verdict: {verdict}")
                 self.logger.info(f"  Total Return: {metrics.get('total_return', 0) * 100:.2f}%")
                 self.logger.info(f"  Sharpe Ratio: {metrics.get('sharpe_ratio', 0):.2f}")
@@ -141,8 +162,6 @@ class ExperimentAgent(BaseAgent):
                 self.logger.info(f"  Total Trades: {metrics.get('total_trades', 0)}")
 
                 state["results_data"] = self._map_to_backtest_results(metrics)
-                state["experiment_code"] = self._collect_code_from_sandbox(sandbox)
-                state["execution_logs"] = execution_log
 
                 if verdict == "success":
                     state["validation_status"] = "success"
@@ -151,23 +170,48 @@ class ExperimentAgent(BaseAgent):
                 else:
                     state["validation_status"] = "partial"  # agentic loop 产出了结果，至少 partial
 
-                self.save_artifact(
-                    state["experiment_code"], project_id, "strategy.py", "experiments"
+                # 写入 ExperimentFeedback
+                failed_steps = self._identify_failed_steps(metrics, experiment_plan)
+                feedback_verdict = verdict if verdict in ("success", "revise_plan") else (
+                    "partial" if verdict == "accept_partial" else "revise_plan"
                 )
+                state["experiment_feedback"] = ExperimentFeedback(
+                    verdict=feedback_verdict,
+                    analysis=analysis.get("analysis", ""),
+                    suggestions=analysis.get("suggestions", []),
+                    failed_steps=failed_steps,
+                )
+
+                # 保存策略代码和结果
+                strategy_code = self._collect_code_from_sandbox(sandbox)
+                self.save_artifact(strategy_code, project_id, "strategy.py", "experiments")
                 self.save_artifact(
                     dict(state["results_data"]), project_id, "backtest_results.json", "experiments"
                 )
+
+                # 回写 plan.md checklist
+                self._update_and_save_plan(project_id, metrics, experiment_plan, analysis)
+
+                # 构建并保存 experiment.md
+                experiment_md = self._build_experiment_markdown(
+                    strategy_code, metrics, analysis
+                )
+                self.save_artifact(experiment_md, project_id, "experiment.md", "experiments")
         else:
             state["validation_status"] = "failed"
             state["error_messages"] = "Agentic loop ended without submitting results"
-            state["experiment_code"] = self._collect_code_from_sandbox(sandbox)
-            state["execution_logs"] = execution_log
+            state["experiment_feedback"] = ExperimentFeedback(
+                verdict="failed",
+                analysis="Agentic loop ended without submitting results",
+                suggestions=["Review tool-use loop and sandbox execution"],
+                failed_steps=["Complete experiment execution"],
+            )
 
         # 保存执行日志
         self.save_artifact(execution_log, project_id, "execution_logs.txt", "experiments")
 
-        # 防止 pipeline should_retry_experiment 触发无限循环
-        state["iteration"] = max_retries
+        # 递增迭代计数器
+        state["iteration"] = state.get("iteration", 0) + 1
 
         # 记录错误
         if state["validation_status"] == "failed":
@@ -202,6 +246,172 @@ class ExperimentAgent(BaseAgent):
         return state
 
     # ==================================================================
+    # plan.md 回写
+    # ==================================================================
+
+    def _update_and_save_plan(
+        self, project_id: str, metrics: dict,
+        experiment_plan: ExperimentPlan, analysis: dict
+    ):
+        """读取 plan.md，更新 checklist 标记，追加 Execution Results 表格，回写。"""
+        plan_md = self.file_manager.load_text(
+            project_id, "plan.md", subdir="experiments"
+        )
+        if not plan_md:
+            self.logger.warning("plan.md not found, skipping checklist update")
+            return
+
+        updated_plan = self._update_plan_checklist(plan_md, metrics, experiment_plan, analysis)
+        self.save_artifact(updated_plan, project_id, "plan.md", "experiments")
+        self.logger.info("Updated plan.md with execution results")
+
+    def _update_plan_checklist(
+        self, plan_md: str, metrics: dict,
+        experiment_plan: ExperimentPlan, analysis: dict
+    ) -> str:
+        """解析 plan.md checklist，标记完成/失败状态，追加结果表格。"""
+        lines = plan_md.split("\n")
+        updated_lines = []
+        success_criteria = experiment_plan.get("success_criteria", {})
+
+        # 判断最后一个 step（验证）是否通过
+        validation_passed = self._check_success_criteria(metrics, success_criteria)
+
+        for line in lines:
+            # 匹配 checklist 行: - [ ] Step N: ...
+            match = re.match(r'^(\s*-\s+)\[ \]\s+(.*)', line)
+            if match:
+                prefix = match.group(1)
+                step_text = match.group(2)
+                # 最后一步"validate"检查 success criteria
+                if "validate" in step_text.lower() or "success criteria" in step_text.lower():
+                    if validation_passed:
+                        updated_lines.append(f"{prefix}[x] {step_text}")
+                    else:
+                        failure_details = self._format_criteria_failures(metrics, success_criteria)
+                        updated_lines.append(f"{prefix}[ ] {step_text} — FAILED: {failure_details}")
+                else:
+                    # 非验证步骤全部标记为完成（agentic loop 执行了就算完成）
+                    updated_lines.append(f"{prefix}[x] {step_text}")
+            else:
+                updated_lines.append(line)
+
+        # 追加 Execution Results 表格
+        results_section = self._build_execution_results_table(metrics, success_criteria)
+        updated_lines.append("")
+        updated_lines.append(results_section)
+
+        return "\n".join(updated_lines)
+
+    def _check_success_criteria(self, metrics: dict, success_criteria: dict) -> bool:
+        """检查 metrics 是否满足所有 success criteria。"""
+        for metric_name, threshold in success_criteria.items():
+            value = metrics.get(metric_name)
+            if value is None:
+                return False
+            # max_drawdown 是负值，threshold 可以是正值表示 < threshold
+            if metric_name == "max_drawdown":
+                if abs(value) > abs(threshold):
+                    return False
+            else:
+                if value < threshold:
+                    return False
+        return True
+
+    def _format_criteria_failures(self, metrics: dict, success_criteria: dict) -> str:
+        """格式化失败的 criteria 信息。"""
+        failures = []
+        for metric_name, threshold in success_criteria.items():
+            value = metrics.get(metric_name, 0)
+            if metric_name == "max_drawdown":
+                if abs(value) > abs(threshold):
+                    failures.append(f"{metric_name}={abs(value)*100:.1f}% > {abs(threshold)*100:.1f}%")
+            else:
+                if value < threshold:
+                    failures.append(f"{metric_name}={value:.2f} < {threshold}")
+        return ", ".join(failures) if failures else "Unknown"
+
+    def _build_execution_results_table(self, metrics: dict, success_criteria: dict) -> str:
+        """构建 Execution Results 表格。"""
+        lines = ["## Execution Results", "| Metric | Value | Target | Status |",
+                 "|--------|-------|--------|--------|"]
+        for metric_name, threshold in success_criteria.items():
+            value = metrics.get(metric_name, 0)
+            if metric_name == "max_drawdown":
+                val_str = f"{abs(value)*100:.1f}%"
+                tgt_str = f"< {abs(threshold)*100:.1f}%"
+                status = "PASS" if abs(value) <= abs(threshold) else "FAIL"
+            elif metric_name in ("total_trades",):
+                val_str = str(int(value))
+                tgt_str = f">= {int(threshold)}"
+                status = "PASS" if value >= threshold else "FAIL"
+            else:
+                val_str = f"{value:.2f}"
+                tgt_str = f"> {threshold}"
+                status = "PASS" if value >= threshold else "FAIL"
+            lines.append(f"| {metric_name} | {val_str} | {tgt_str} | {status} |")
+
+        # 额外指标
+        extra_metrics = ["total_return", "cagr", "volatility", "win_rate"]
+        for m in extra_metrics:
+            if m in metrics and m not in success_criteria:
+                val = metrics[m]
+                if m in ("total_return", "cagr", "volatility", "win_rate"):
+                    lines.append(f"| {m} | {val*100:.1f}% | - | - |")
+                else:
+                    lines.append(f"| {m} | {val:.2f} | - | - |")
+
+        return "\n".join(lines)
+
+    def _identify_failed_steps(self, metrics: dict, experiment_plan: ExperimentPlan) -> List[str]:
+        """识别失败的步骤。"""
+        failed = []
+        success_criteria = experiment_plan.get("success_criteria", {})
+        for metric_name, threshold in success_criteria.items():
+            value = metrics.get(metric_name, 0)
+            if metric_name == "max_drawdown":
+                if abs(value) > abs(threshold):
+                    failed.append(f"Validate {metric_name}: {abs(value)*100:.1f}% > {abs(threshold)*100:.1f}%")
+            else:
+                if value < threshold:
+                    failed.append(f"Validate {metric_name}: {value:.2f} < {threshold}")
+        return failed
+
+    # ==================================================================
+    # experiment.md 构建
+    # ==================================================================
+
+    def _build_experiment_markdown(
+        self, strategy_code: str, metrics: dict, analysis: dict
+    ) -> str:
+        """构建 experiment.md（代码 + 指标 + 分析）。"""
+        metrics_lines = ["| Metric | Value |", "|--------|-------|"]
+        for k, v in metrics.items():
+            if isinstance(v, float):
+                metrics_lines.append(f"| {k} | {v:.4f} |")
+            else:
+                metrics_lines.append(f"| {k} | {v} |")
+
+        return f"""# Experiment Results
+
+## Strategy Code
+```python
+{strategy_code}
+```
+
+## Performance Summary
+{chr(10).join(metrics_lines)}
+
+## Analysis
+**Verdict**: {analysis.get("verdict", "N/A")}
+
+{analysis.get("analysis", "")}
+
+### Suggestions
+{chr(10).join("- " + s for s in analysis.get("suggestions", []))}
+"""
+
+    # ==================================================================
     # 结果分析
     # ==================================================================
 
@@ -234,7 +444,7 @@ Evaluate whether these results validate the hypothesis. Consider:
 
 Output as JSON:
 {{
-  "verdict": "success" | "revise" | "accept_partial",
+  "verdict": "success" | "revise_plan" | "accept_partial",
   "analysis": "2-3 sentence evaluation explaining your verdict",
   "suggestions": ["specific improvement suggestion 1", "suggestion 2"]
 }}
@@ -242,13 +452,13 @@ Output as JSON:
 Verdict rules:
 - "success": Meets plan criteria AND system thresholds AND statistically significant
 - "accept_partial": Partially meets criteria, no clear improvement path
-- "revise": Does not meet criteria but has specific improvement directions"""
+- "revise_plan": Does not meet criteria but has specific improvement directions"""
 
         try:
             result = self.call_llm(prompt=prompt, max_tokens=1500, temperature=0.2, response_format="json")
             if isinstance(result, dict) and "verdict" in result:
-                if result["verdict"] not in ("success", "revise", "accept_partial"):
-                    result["verdict"] = "revise"
+                if result["verdict"] not in ("success", "revise_plan", "accept_partial"):
+                    result["verdict"] = "revise_plan"
                 return result
         except Exception as e:
             self.logger.warning(f"Analysis LLM call failed: {e}")
@@ -264,7 +474,7 @@ Verdict rules:
         if sharpe >= min_sharpe and trades >= min_trades and dd <= max_dd:
             return {"verdict": "success", "analysis": "Metrics meet all thresholds (fallback check)", "suggestions": []}
         return {
-            "verdict": "revise",
+            "verdict": "revise_plan",
             "analysis": f"Fallback check: sharpe={sharpe:.2f} (min {min_sharpe}), trades={trades} (min {min_trades}), dd={dd:.2f} (max {max_dd})",
             "suggestions": ["Improve signal quality", "Adjust parameters"],
         }
@@ -321,9 +531,8 @@ Verdict rules:
 
     def _generate_execution_summary(self, state: ResearchState) -> Dict[str, Any]:
         execution_status = state.get("validation_status", "unknown")
-        code_len = len(state.get("experiment_code", ""))
 
-        log = f"Agentic experiment {execution_status.upper()}: code={code_len} chars"
+        log = f"Agentic experiment {execution_status.upper()}"
         learnings = []
         mistakes = []
 

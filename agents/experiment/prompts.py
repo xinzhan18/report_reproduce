@@ -97,13 +97,11 @@ Other metrics are optional but encouraged.
 def build_task_prompt(
     hypothesis: str,
     methodology: str,
-    implementation_steps: list[str],
+    plan_md: str,
     success_criteria: dict,
     data_info: str,
 ) -> str:
-    """构建 task prompt，注入实验计划信息。"""
-    steps_text = "\n".join(f"{i+1}. {step}" for i, step in enumerate(implementation_steps))
-
+    """构建 task prompt，注入 plan.md 内容作为上下文。"""
     return f"""\
 ## Task: Implement and evaluate a quantitative trading strategy
 
@@ -113,8 +111,13 @@ def build_task_prompt(
 ### Methodology
 {methodology}
 
-### Implementation Steps
-{steps_text}
+### Experiment Plan
+The following is the experiment plan (plan.md) with an implementation checklist.
+Follow each step in the checklist to complete the experiment.
+
+```markdown
+{plan_md}
+```
 
 ### Success Criteria
 {json.dumps(success_criteria, indent=2)}
@@ -124,10 +127,11 @@ def build_task_prompt(
 
 ### Instructions
 1. First, read the data manifest to understand what data is available
-2. Write a complete strategy implementation in a Python script
-3. Run the script and verify it produces valid results
-4. If there are errors, debug and fix them
-5. Submit the final results using submit_result
+2. Follow the Implementation Checklist steps in order
+3. Write a complete strategy implementation in a Python script
+4. Run the script and verify it produces valid results
+5. If there are errors, debug and fix them
+6. Submit the final results using submit_result
 
 Begin by reading the data manifest and planning your approach.
 """

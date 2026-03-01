@@ -32,7 +32,7 @@ The report should follow this structure:
 8. References
 
 ## Workflow
-1. Read all upstream files to understand the full research context
+1. Read all upstream Markdown files to understand the full research context
 2. Write each section, ensuring consistency across the report
 3. Optionally browse the web for supplementary references
 4. Assemble and polish the complete report
@@ -59,15 +59,12 @@ def build_task_prompt(state_summary: str) -> str:
 {state_summary}
 
 ### Instructions
-1. Read upstream files to gather complete context:
-   - `literature/papers_analyzed.json` — Papers reviewed
-   - `literature/literature_summary.md` — Literature synthesis
-   - `literature/hypothesis.md` — Research hypothesis and gaps
-   - `experiments/experiment_plan.json` — Experiment plan
-   - `experiments/planning_document.md` — Detailed methodology
-   - `experiments/backtest_results.json` — Experiment results
-   - `experiments/strategy.py` — Strategy code
-   - `experiments/execution_logs.txt` — Execution logs
+1. Read upstream Markdown files to gather complete context:
+   - `literature/ideation.md` — Literature review, research gaps, and hypothesis
+   - `experiments/plan.md` — Experiment plan with implementation checklist and execution results
+   - `experiments/experiment.md` — Experiment results, strategy code, and analysis
+   - `experiments/backtest_results.json` — Detailed backtest metrics
+   - `experiments/strategy.py` — Strategy code (optional detail)
 2. Write each report section, ensuring it references actual data
 3. Optionally generate visualizations (equity curves, metric comparisons)
 4. Assemble the complete report

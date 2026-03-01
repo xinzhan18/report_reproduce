@@ -20,7 +20,9 @@ _execute(state)
 
 ### agent.py
 - **角色**: PlanningAgent 主类
-- **功能**: 继承 BaseAgent，实现 _execute() + 四个 hook 方法 + _build_kg_context() + _build_planning_document()
+- **功能**: 继承 BaseAgent，实现 _execute() + 四个 hook 方法 + _build_kg_context() + _build_plan_markdown()
+- **产出文件**: `experiments/plan.md` (带 Implementation Checklist), `experiments/data_config.json`
+- **双模式**: 首次模式（读取 ideation.md）+ 修正模式（读取被标记的 plan.md + ExperimentFeedback）
 
 ### tools.py
 - **角色**: Tool schema + executor
@@ -28,7 +30,7 @@ _execute(state)
 
 ### prompts.py
 - **角色**: Prompt 模板
-- **功能**: SYSTEM_PROMPT_TEMPLATE + build_task_prompt()
+- **功能**: SYSTEM_PROMPT_TEMPLATE + build_task_prompt() (首次模式) + build_revision_task_prompt() (修正模式)
 
 ### __init__.py
 - **角色**: 子包入口
@@ -36,5 +38,6 @@ _execute(state)
 
 ## 更新历史
 
+- 2026-03-01: Markdown 驱动：输出 plan.md 带 checklist，支持首次+修正双模式，新增 build_revision_task_prompt
 - 2026-03-01: 通用工具提取到 common_tools.py; prompt 修正 structured_insights.json → papers_analyzed.json
 - 2026-03-01: 创建子包，从 planning_agent.py 重构为 Agentic Tool-Use 引擎

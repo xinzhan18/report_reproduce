@@ -23,6 +23,9 @@ _execute(state)
 ### agent.py
 - **角色**: WritingAgent 主类
 - **功能**: 继承 BaseAgent，实现 _execute() + 四个 hook 方法 + _build_state_summary() + _add_table_of_contents()
+- **上游文件**: 读取 `literature/ideation.md`, `experiments/plan.md`, `experiments/experiment.md`
+- **产出文件**: `reports/final_report.md`, `reports/final_report_formatted.md`
+- **State 精简**: 不写 report_draft/final_report 到 state，仅保存到文件
 
 ### tools.py
 - **角色**: Tool schema + executor
@@ -38,5 +41,6 @@ _execute(state)
 
 ## 更新历史
 
+- 2026-03-01: Markdown 驱动：适配 state 精简，_on_submit_result 不写 state，读取上游 .md 文件
 - 2026-03-01: 删除 run_python 工具引用 (prompt 和 tools.py)；通用工具提取到 common_tools.py；工具数 6→5
 - 2026-03-01: 创建子包，从 writing_agent.py 重构为 Agentic Tool-Use 引擎

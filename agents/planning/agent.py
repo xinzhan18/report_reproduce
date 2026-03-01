@@ -3,16 +3,21 @@ PlanningAgent — Agentic Tool-Use 实验规划引擎
 
 Pipeline 第二阶段：LLM 拥有上游文件读取、知识图谱查询、浏览器等工具，
 通过多轮 tool_use 循环自主完成实验方案设计。
+输出 plan.md（带 Implementation Checklist）供 ExperimentAgent 读取和回写。
+支持修正模式：当 ExperimentAgent 回写失败标记后，pipeline 路由回此 Agent 读取标记后的 plan.md 修正方案。
 """
 
 # INPUT:  agents.base_agent (BaseAgent), core.state (ResearchState, ExperimentPlan),
 #         tools.file_manager (FileManager),
 #         agents.planning.tools (get_tool_definitions),
-#         agents.planning.prompts (SYSTEM_PROMPT_TEMPLATE, build_task_prompt),
+#         agents.planning.prompts (SYSTEM_PROMPT_TEMPLATE, build_task_prompt, build_revision_task_prompt),
 #         agents.browser_manager (BrowserManager, is_playwright_available)
 # OUTPUT: PlanningAgent 类
+#         产出文件: experiments/plan.md (核心, 带 checklist),
+#                  experiments/data_config.json (结构化配置)
 # POSITION: Agent层 - 规划智能体，Pipeline 第二阶段
 #           通过 BaseAgent._agentic_loop() 驱动的 Agentic Tool-Use 引擎
+#           支持首次模式 + 修正模式（反馈回路）
 
 from typing import Dict, Any
 import json
@@ -24,7 +29,7 @@ from agents.base_agent import BaseAgent
 from core.state import ResearchState, ExperimentPlan
 from tools.file_manager import FileManager
 from agents.planning.tools import get_tool_definitions
-from agents.planning.prompts import SYSTEM_PROMPT_TEMPLATE, build_task_prompt
+from agents.planning.prompts import SYSTEM_PROMPT_TEMPLATE, build_task_prompt, build_revision_task_prompt
 from agents.browser_manager import BrowserManager, is_playwright_available
 
 logger = logging.getLogger("agents.planning")
@@ -53,18 +58,31 @@ class PlanningAgent(BaseAgent):
         return SYSTEM_PROMPT_TEMPLATE.format(agent_memory=agent_memory)
 
     def _build_task_prompt(self, state: ResearchState) -> str:
-        """构建 planning task prompt。"""
+        """构建 planning task prompt — 支持首次模式和修正模式。"""
+        feedback = state.get("experiment_feedback")
         kg_context = self._build_kg_context(state["hypothesis"])
-        return build_task_prompt(
-            hypothesis=state["hypothesis"],
-            research_direction=state["research_direction"],
-            literature_summary=state.get("literature_summary", ""),
-            kg_context=kg_context,
-        )
+
+        if feedback and feedback.get("verdict") == "revise_plan":
+            # 修正模式：读取被 ExperimentAgent 标记过的 plan.md
+            marked_plan = self.file_manager.load_text(
+                state["project_id"], "plan.md", subdir="experiments"
+            ) or ""
+            return build_revision_task_prompt(
+                hypothesis=state["hypothesis"],
+                marked_plan=marked_plan,
+                feedback=feedback,
+                kg_context=kg_context,
+            )
+        else:
+            # 首次模式
+            return build_task_prompt(
+                hypothesis=state["hypothesis"],
+                research_direction=state["research_direction"],
+                kg_context=kg_context,
+            )
 
     def _on_submit_result(self, results: dict, state: ResearchState):
         """映射 submit_result 结果到 state。"""
-        # experiment_plan
         plan_data = results.get("experiment_plan", {})
         state["experiment_plan"] = ExperimentPlan(
             objective=plan_data.get("objective", ""),
@@ -75,14 +93,9 @@ class PlanningAgent(BaseAgent):
             estimated_runtime=plan_data.get("estimated_runtime", "Unknown"),
             risk_factors=plan_data.get("risk_factors", []),
         )
-
-        # methodology
         state["methodology"] = results.get("methodology", "")
 
-        # expected_outcomes
-        state["expected_outcomes"] = results.get("expected_outcomes", "")
-
-        # data_config (保存供 ExperimentAgent 使用)
+        # 保存 data_config 供后续使用
         self._last_data_config = results.get("data_config")
 
     # ==================================================================
@@ -94,6 +107,12 @@ class PlanningAgent(BaseAgent):
         project_id = state["project_id"]
         research_direction = state["research_direction"]
         self.logger.info(f"Hypothesis: {hypothesis[:100]}...")
+
+        is_revision = (
+            state.get("experiment_feedback", {}) or {}
+        ).get("verdict") == "revise_plan"
+        if is_revision:
+            self.logger.info("REVISION MODE: Revising plan based on experiment feedback")
 
         # 构建 tool context
         browser = BrowserManager.get_instance() if is_playwright_available() else None
@@ -109,40 +128,16 @@ class PlanningAgent(BaseAgent):
 
         if submitted_results:
             experiment_plan = state.get("experiment_plan", {})
-            methodology = state.get("methodology", "")
-
             self.logger.info(f"Objective: {experiment_plan.get('objective', 'N/A')[:100]}...")
 
-            # 保存实验计划
-            self.save_artifact(
-                content=experiment_plan,
-                project_id=project_id,
-                filename="experiment_plan.json",
-                subdir="experiments",
-            )
+            # 构建并保存 plan.md（带 checklist）
+            plan_md = self._build_plan_markdown(state)
+            self.save_artifact(plan_md, project_id, "plan.md", "experiments")
 
             # 保存 data_config（供 ExperimentAgent 使用）
             data_config = getattr(self, "_last_data_config", None)
             if data_config:
                 self.save_artifact(data_config, project_id, "data_config.json", "experiments")
-
-            # 内联资源计算
-            state["resource_requirements"] = {
-                "compute": "Local CPU",
-                "data_sources": ", ".join(experiment_plan.get("data_requirements", [])),
-                "software": "Python, pandas, numpy",
-                "storage": "~100MB for data cache",
-                "estimated_time": experiment_plan.get("estimated_runtime", "Unknown"),
-            }
-
-            # 保存规划文档
-            planning_doc = self._build_planning_document(state, methodology)
-            self.save_artifact(
-                content=planning_doc,
-                project_id=project_id,
-                filename="planning_document.md",
-                subdir="experiments",
-            )
 
             # 更新知识图谱
             findings = [
@@ -154,7 +149,6 @@ class PlanningAgent(BaseAgent):
             )
         else:
             self.logger.warning("Agentic loop ended without submitting results")
-            # 设置默认值避免下游失败
             state.setdefault("experiment_plan", ExperimentPlan(
                 objective="Test hypothesis through backtesting",
                 methodology="Implement and validate trading strategy",
@@ -165,7 +159,6 @@ class PlanningAgent(BaseAgent):
                 risk_factors=["Data quality", "Overfitting"],
             ))
             state.setdefault("methodology", "")
-            state.setdefault("expected_outcomes", "")
 
         # 保存执行日志
         self.save_artifact(execution_log, project_id, "execution_logs.txt", "experiments")
@@ -203,42 +196,46 @@ class PlanningAgent(BaseAgent):
             lines.append(f"- **[{node_type}] {k['name']}**: {k.get('description', '')[:150]}")
         return "\n".join(lines) + "\n"
 
-    def _build_planning_document(self, state: ResearchState, methodology: str) -> str:
-        """构建 Markdown 规划文档。"""
+    def _build_plan_markdown(self, state: ResearchState) -> str:
+        """构建 plan.md，将 implementation_steps 转为 checklist 格式。"""
         experiment_plan = state["experiment_plan"]
-        return f"""# Experiment Planning Document
+        methodology = state.get("methodology", "")
 
-## Hypothesis
-{state["hypothesis"]}
+        # Success criteria 格式化
+        criteria_lines = []
+        for metric, threshold in experiment_plan.get("success_criteria", {}).items():
+            criteria_lines.append(f"- {metric} > {threshold}" if isinstance(threshold, (int, float)) else f"- {metric}: {threshold}")
 
-## Experiment Plan
-**Objective**: {experiment_plan['objective']}
+        # Implementation checklist
+        checklist_lines = []
+        for step in experiment_plan.get("implementation_steps", []):
+            checklist_lines.append(f"- [ ] {step}")
 
-**Methodology**: {experiment_plan['methodology']}
+        # Risk factors
+        risk_lines = [f"- {risk}" for risk in experiment_plan.get("risk_factors", [])]
 
-## Detailed Methodology
-{methodology}
+        return f"""# Experiment Plan
 
-## Data Requirements
-{chr(10).join(f"- {req}" for req in experiment_plan['data_requirements'])}
+## Objective
+{experiment_plan.get('objective', '')}
 
-## Implementation Steps
-{chr(10).join(f"{i+1}. {step}" for i, step in enumerate(experiment_plan['implementation_steps']))}
+## Methodology
+{methodology or experiment_plan.get('methodology', '')}
+
+## Data Configuration
+{chr(10).join(f"- {req}" for req in experiment_plan.get('data_requirements', []))}
+
+## Implementation Checklist
+{chr(10).join(checklist_lines)}
 
 ## Success Criteria
-{json.dumps(experiment_plan['success_criteria'], indent=2)}
-
-## Expected Outcomes
-{state.get('expected_outcomes', '')}
-
-## Resource Requirements
-{json.dumps(state.get('resource_requirements', {}), indent=2)}
+{chr(10).join(criteria_lines)}
 
 ## Risk Factors
-{chr(10).join(f"- {risk}" for risk in experiment_plan['risk_factors'])}
+{chr(10).join(risk_lines)}
 
 ## Estimated Runtime
-{experiment_plan['estimated_runtime']}
+{experiment_plan.get('estimated_runtime', 'Unknown')}
 """
 
     def _generate_execution_summary(self, state: ResearchState) -> Dict[str, Any]:

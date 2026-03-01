@@ -24,7 +24,9 @@ _execute(state)
 
 ### agent.py
 - **角色**: ExperimentAgent 主类
-- **功能**: 继承 BaseAgent，实现 _execute() + 四个 hook 方法 + _analyze_results() + _map_to_backtest_results() + _describe_data() + _collect_code_from_sandbox()
+- **功能**: 继承 BaseAgent，实现 _execute() + 四个 hook 方法 + _analyze_results() + _map_to_backtest_results() + _describe_data() + _collect_code_from_sandbox() + _update_and_save_plan() + _update_plan_checklist() + _build_experiment_markdown() + _identify_failed_steps()
+- **产出文件**: `experiments/plan.md` (回写 checklist 标记), `experiments/experiment.md` (结果+代码+分析), `experiments/strategy.py`, `experiments/backtest_results.json`
+- **反馈回路**: 写入 `state["experiment_feedback"]` (ExperimentFeedback)，verdict="revise_plan" 触发回退到 PlanningAgent
 
 ### sandbox.py
 - **角色**: SandboxManager 沙箱管理器
@@ -58,6 +60,7 @@ _execute(state)
 
 ## 更新历史
 
+- 2026-03-01: Markdown 驱动：读取 plan.md 作为 task prompt，执行后回写 checklist 标记 + 构建 experiment.md + 写入 ExperimentFeedback；verdict 新增 "revise_plan"；迭代计数改为递增
 - 2026-03-01: Sortino 双重年化修复 (metrics.py)；sandbox 安全增强 (shell=False, 元字符检测)；通用工具提取到 common_tools.py
 - 2026-03-01: 适配 BaseAgent._agentic_loop() 通用循环；tools.py 适配 ToolRegistry 格式 (get_tool_definitions)；新增浏览器工具 (browse_webpage, google_search)
 - 2026-03-01: 创建子包，从单文件 experiment_agent.py 重构为 Agentic Tool-Use 引擎

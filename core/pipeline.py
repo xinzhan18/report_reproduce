@@ -1,22 +1,24 @@
 """
 LangGraph pipeline orchestration for research automation.
 
-Connects all four agents in a workflow with error handling and checkpointing.
+Connects all four agents in a workflow with error handling, checkpointing,
+and experiment→planning feedback loop driven by ExperimentFeedback.
 """
 
 # ============================================================================
 # 文件头注释 (File Header)
 # INPUT:  外部依赖 - langgraph (Pipeline框架), typing (类型系统),
-#                   core/state (ResearchState状态定义),
+#                   core/state (ResearchState, ExperimentFeedback 状态定义),
 #                   agents (四个Agent类),
 #                   tools (PaperFetcher, FileManager, PDFReader),
 #                   market_data (DataFetcher),
 #                   config/llm_config (LLM客户端),
 #                   core/persistence (Checkpointer)
 # OUTPUT: 对外提供 - create_research_pipeline()函数,返回LangGraph编排器,
-#                   should_retry_experiment()条件路由函数
+#                   should_continue_after_experiment()条件路由函数
 # POSITION: 系统地位 - Core/Pipeline (核心层-编排器)
 #                     系统的控制流中枢,编排四个Agent的执行顺序
+#                     支持 experiment→planning 反馈回路（最多 2 次迭代）
 #
 # 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
 # ============================================================================
@@ -36,9 +38,14 @@ from config.llm_config import get_llm
 from core.persistence import get_checkpointer
 
 
-def should_retry_experiment(state: ResearchState) -> str:
+def should_continue_after_experiment(state: ResearchState) -> str:
     """
-    Conditional routing: retry experiment if failed and under max retries.
+    Conditional routing after experiment based on ExperimentFeedback.
+
+    Routes:
+    - "success" / "partial" → writing
+    - "revise_plan" (iteration < 2) → planning (feedback loop)
+    - otherwise → failed
 
     Args:
         state: Current research state
@@ -46,10 +53,18 @@ def should_retry_experiment(state: ResearchState) -> str:
     Returns:
         Next node name
     """
-    if state["validation_status"] == "failed" and state["iteration"] < 2:
-        return "experiment"
-    elif state["validation_status"] in ["success", "partial"]:
+    feedback = state.get("experiment_feedback")
+    if not feedback:
+        return "failed"
+
+    verdict = feedback.get("verdict", "failed")
+
+    if verdict == "success":
         return "writing"
+    elif verdict == "partial":
+        return "writing"
+    elif verdict == "revise_plan" and state.get("iteration", 0) < 2:
+        return "planning"
     else:
         return "failed"
 
@@ -98,18 +113,18 @@ def create_research_pipeline():
     # Define edges (workflow)
     workflow.set_entry_point("ideation")
 
-    # Linear flow for main pipeline
+    # Linear flow: ideation → planning → experiment
     workflow.add_edge("ideation", "planning")
     workflow.add_edge("planning", "experiment")
 
-    # Conditional routing after experiment
+    # Conditional routing after experiment (feedback loop)
     workflow.add_conditional_edges(
         "experiment",
-        should_retry_experiment,
+        should_continue_after_experiment,
         {
-            "experiment": "experiment",  # Retry
-            "writing": "writing",        # Success - continue to writing
-            "failed": "failed"           # Failed - go to error handler
+            "writing": "writing",        # Success/partial → writing
+            "planning": "planning",      # Revise plan → feedback loop
+            "failed": "failed"           # Failed → error handler
         }
     )
 
@@ -167,8 +182,6 @@ def run_research_pipeline(
         print(f"\n{'='*80}")
         print(f"PIPELINE COMPLETED")
         print(f"Status: {final_state['status']}")
-        if final_state['status'] == 'completed':
-            print(f"Report: {final_state.get('report_path', 'N/A')}")
         print(f"{'='*80}\n")
 
         return final_state
@@ -247,7 +260,6 @@ def main():
         print(f"\n✓ Research completed successfully!")
         print(f"  Hypothesis: {result['hypothesis'][:100]}...")
         print(f"  Sharpe Ratio: {result['results_data']['sharpe_ratio']:.2f}")
-        print(f"  Report: {result['report_path']}")
     else:
         print(f"\n✗ Research failed: {result.get('error_messages', 'Unknown error')}")
 

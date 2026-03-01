@@ -3,6 +3,7 @@ WritingAgent — Agentic Tool-Use 研究报告生成引擎
 
 Pipeline 第四阶段：LLM 拥有上游文件读取、报告写入、Python 可视化、浏览器等工具，
 通过多轮 tool_use 循环自主完成报告生成。
+读取上游 ideation.md、plan.md、experiment.md 构建完整报告。
 """
 
 # INPUT:  agents.base_agent (BaseAgent), core.state (ResearchState),
@@ -12,8 +13,10 @@ Pipeline 第四阶段：LLM 拥有上游文件读取、报告写入、Python 可
 #         agents.browser_manager (BrowserManager, is_playwright_available),
 #         datetime, json
 # OUTPUT: WritingAgent 类
+#         产出文件: reports/final_report.md, reports/final_report_formatted.md
 # POSITION: Agent层 - 写作智能体，Pipeline 第四阶段
 #           通过 BaseAgent._agentic_loop() 驱动的 Agentic Tool-Use 引擎
+#           读取上游 Markdown 文件 (ideation.md, plan.md, experiment.md)
 
 from typing import Dict, Any
 import json
@@ -62,9 +65,10 @@ class WritingAgent(BaseAgent):
         return build_task_prompt(state_summary=state_summary)
 
     def _on_submit_result(self, results: dict, state: ResearchState):
-        """映射 submit_result 结果到 state。"""
-        state["report_draft"] = results.get("report_draft", "")
-        state["final_report"] = results.get("final_report", results.get("report_draft", ""))
+        """映射 submit_result 结果 — 仅保存到文件，不写 state。"""
+        # report 内容由 _execute 中通过 save_artifact 保存
+        self._last_report_draft = results.get("report_draft", "")
+        self._last_final_report = results.get("final_report", results.get("report_draft", ""))
 
     # ==================================================================
     # 主流程
@@ -86,8 +90,7 @@ class WritingAgent(BaseAgent):
         )
 
         if submitted_results:
-            report_draft = state.get("report_draft", "")
-            final_report = state.get("final_report", "")
+            final_report = getattr(self, "_last_final_report", "")
             self.logger.info(f"Report completed ({len(final_report)} characters)")
 
             # 保存报告
@@ -108,8 +111,6 @@ class WritingAgent(BaseAgent):
             )
         else:
             self.logger.warning("Agentic loop ended without submitting results")
-            state.setdefault("report_draft", "")
-            state.setdefault("final_report", "")
 
         # 保存执行日志
         self.save_artifact(execution_log, project_id, "execution_logs.txt", "reports")
@@ -139,16 +140,6 @@ class WritingAgent(BaseAgent):
                          f"MaxDD={rd.get('max_drawdown', 0)*100:.1f}%, "
                          f"Trades={rd.get('total_trades', 0)}")
 
-        # 论文数
-        papers = state.get("papers_reviewed", [])
-        if papers:
-            parts.append(f"**Papers Reviewed**: {len(papers)}")
-
-        # 研究缺口
-        gaps = state.get("research_gaps", [])
-        if gaps:
-            parts.append(f"**Research Gaps**: {len(gaps)} identified")
-
         return "\n".join(parts)
 
     def _add_table_of_contents(self, markdown: str) -> str:
@@ -167,10 +158,9 @@ class WritingAgent(BaseAgent):
         return markdown
 
     def _generate_execution_summary(self, state: ResearchState) -> Dict[str, Any]:
-        report_draft = state.get("report_draft", "")
-        final_report = state.get("final_report", "")
+        final_report = getattr(self, "_last_final_report", "")
         return {
-            "log": f"Report: draft={len(report_draft)} chars, final={len(final_report)} chars",
+            "log": f"Report: final={len(final_report)} chars",
             "learnings": [f"Generated research report ({len(final_report)} characters)"],
             "mistakes": [],
             "reflection": "Agentic report generation integrates findings from all previous agents",

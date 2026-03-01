@@ -1,188 +1,358 @@
-# Agent 记忆自动更新机制
+# Pipeline 架构升级：Markdown 驱动 + Checklist 反馈回路
 
 ## Context
 
-当前 AgentMemory 系统是一个半成品骨架：
-- `save_daily_log()` — 被所有 Agent 调用，但写入的内容来自 `_generate_execution_summary()` 这个硬编码返回空列表的方法
-- `add_learning()` — **从未被任何 Agent 调用**
-- `record_mistake()` — 仅被 ExperimentAgent 在失败时调用
-
-结果：`memory.md` 和 `mistakes.md` 始终为空，Agent 无法从历史执行中积累经验。
-
-**目标**：在 `_save_log()` 之后添加一个 LLM 反思步骤，自动从执行日志中提取 learnings 和 mistakes，写入持久化记忆文件。
+当前 4 个 Agent 的数据交换是 ResearchState（内存） + 散落的 JSON/MD 文件双写。
+用户期望的架构：**每个 Agent 维护一个核心 Markdown 文档**，下游 Agent 直接读取上游 Markdown 获取上下文。
+PlanningAgent 输出的 plan.md 包含 **checklist**，ExperimentAgent 执行后**回写 plan.md 标记完成/失败状态**。
+如果有未完成的 step，pipeline 路由回 PlanningAgent 读取标记后的 plan.md 修正方案。
 
 ---
 
-## 方案：BaseAgent 添加 LLM 反思步骤
-
-### 核心思路
-
-在 `__call__()` 生命周期的 `_save_log()` 之后，新增 `_reflect_and_update_memory()` 方法：
-1. 截取执行日志（head 500 + tail 3000 字符，避免超长）
-2. 用 **haiku** 模型（最低成本）做一次 JSON 格式 LLM 调用，提取 learnings 和 mistakes
-3. 调用现有的 `self.memory.add_learning()` 和 `self.memory.record_mistake()` 写入文件
-4. 全程 try/except 包裹，失败不影响主流程
-
-### 数据流
+## 核心 Markdown 文档流转
 
 ```
-_agentic_loop() → execution_log (str)
-                      ↓
-               self._last_execution_log = execution_log  (存在实例属性上)
-                      ↓
-__call__() → _save_log() → _reflect_and_update_memory()
-                                    ↓
-                            call_llm_json(haiku, 截取的日志)
-                                    ↓
-                            {"learnings": [...], "mistakes": [...]}
-                                    ↓
-                    memory.add_learning() / memory.record_mistake()
+IdeationAgent                PlanningAgent              ExperimentAgent           WritingAgent
+     │                            │                          │                        │
+     ▼                            ▼                          ▼                        ▼
+ ideation.md ──────────────► plan.md ──────────────────► plan.md (回写更新)      report.md
+ (文献综述+假设)           (方案+checklist)              + experiment.md
+                                                         (结果+指标)
+                                  ▲                          │
+                                  │   未完成 step? 回退      │
+                                  └──────────────────────────┘
 ```
+
+### 各 Agent 的 Markdown 规范
+
+**ideation.md** (`literature/ideation.md`)
+```markdown
+# Literature Review: {research_direction}
+
+## Papers Reviewed
+| # | Title | Authors | Key Findings | Relevance |
+|---|-------|---------|-------------|-----------|
+| 1 | ... | ... | ... | 0.9 |
+
+## Key Methodologies
+- ...
+
+## Research Gaps
+1. Gap description...
+2. ...
+
+## Hypothesis
+**Statement**: ...
+**Rationale**: ...
+**Supporting Evidence**: ...
+```
+
+**plan.md** (`experiments/plan.md`) — **带 checklist**
+```markdown
+# Experiment Plan
+
+## Objective
+{clear testing statement}
+
+## Methodology
+{detailed 300-500 words}
+
+## Data Configuration
+- Symbols: SPY
+- Date Range: 2015-01-01 to present
+- Interval: 1d
+- Market: us_equity
+
+## Implementation Checklist
+- [ ] Step 1: Download and prepare OHLCV data
+- [ ] Step 2: Implement momentum signal (20-day lookback, ref: Paper X)
+- [ ] Step 3: Design entry/exit rules
+- [ ] Step 4: Add position sizing and risk management
+- [ ] Step 5: Run backtest
+- [ ] Step 6: Calculate metrics
+- [ ] Step 7: Validate against success criteria
+
+## Success Criteria
+- Sharpe Ratio > 1.0
+- Max Drawdown < 30%
+- Total Trades >= 20
+
+## Risk Factors
+- ...
+```
+
+**plan.md (ExperimentAgent 回写后)**
+```markdown
+## Implementation Checklist
+- [x] Step 1: Download and prepare OHLCV data
+- [x] Step 2: Implement momentum signal
+- [x] Step 3: Design entry/exit rules
+- [x] Step 4: Add position sizing and risk management
+- [x] Step 5: Run backtest
+- [x] Step 6: Calculate metrics
+- [ ] Step 7: Validate against success criteria — FAILED: Sharpe=0.4 < 1.0, MaxDD=35% > 30%
+
+## Execution Results
+| Metric | Value | Target | Status |
+|--------|-------|--------|--------|
+| Sharpe Ratio | 0.40 | > 1.0 | FAIL |
+| Max Drawdown | 35.0% | < 30% | FAIL |
+| Total Trades | 45 | >= 20 | PASS |
+| Total Return | 15.2% | - | - |
+```
+
+**experiment.md** (`experiments/experiment.md`)
+```markdown
+# Experiment Results
+
+## Strategy Code
+​```python
+# ... strategy.py content ...
+​```
+
+## Performance Summary
+{metrics table}
+
+## Analysis
+{LLM verdict and analysis}
+```
+
+**report.md** (`reports/report.md`) — WritingAgent 最终报告
 
 ---
 
 ## 修改文件清单
 
-### 1. `agents/base_agent.py` — 主要修改
+### Step 1: `core/state.py` — 精简 + ExperimentFeedback
 
-**a) `_agentic_loop()` 末尾存储执行日志**（L261 `execution_log = "\n".join(log_lines)` 之后）
-
+**新增 ExperimentFeedback**:
 ```python
-self._last_execution_log = execution_log
+class ExperimentFeedback(TypedDict):
+    verdict: str        # "success" | "partial" | "revise_plan" | "failed"
+    analysis: str
+    suggestions: list
+    failed_steps: list  # plan.md 中未完成的 step 描述
 ```
 
-**b) `__call__()` 中 `_save_log()` 后添加反思调用**（L81 后）
+**ResearchState 精简** — 移除文件系统中已有的冗余字段：
 
+移除: `papers_reviewed`, `literature_summary`, `research_gaps`, `experiment_code`, `execution_logs`, `report_draft`, `final_report`, `report_path`, `expected_outcomes`, `resource_requirements`
+
+保留:
 ```python
-self._save_log(state)
-self._reflect_and_update_memory(state)  # 新增
+class ResearchState(TypedDict):
+    research_direction: str
+    project_id: str
+    hypothesis: str                           # Ideation 唯一写入 state 的字段
+    experiment_plan: ExperimentPlan            # Planning → Experiment
+    methodology: str                          # Planning → Experiment
+    results_data: BacktestResults             # Experiment → Writing/路由
+    validation_status: Literal[...]           # 路由信号
+    error_messages: Optional[str]
+    experiment_feedback: Optional[ExperimentFeedback]  # 新增：反馈回路
+    iteration: int
+    timestamp: str
+    status: str
+    error_log: Optional[str]
+    requires_human_review: bool
+    review_notes: Optional[str]
 ```
 
-**c) 新增 `_reflect_and_update_memory()` 方法**
+更新 `create_initial_state()` 匹配。
 
-在 `_save_log()` 方法之后添加：
+### Step 2: `core/pipeline.py` — 反馈回路
+
+**替换 `should_retry_experiment`**:
+```python
+def should_continue_after_experiment(state: ResearchState) -> str:
+    feedback = state.get("experiment_feedback")
+    if not feedback:
+        return "failed"
+    verdict = feedback.get("verdict", "failed")
+    if verdict == "success":
+        return "writing"
+    elif verdict == "partial":
+        return "writing"
+    elif verdict == "revise_plan" and state.get("iteration", 0) < 2:
+        return "planning"
+    else:
+        return "failed"
+```
+
+**添加 experiment → planning 边**:
+```python
+workflow.add_conditional_edges("experiment", should_continue_after_experiment, {
+    "writing": "writing",
+    "planning": "planning",
+    "failed": "failed",
+})
+```
+
+### Step 3: `agents/ideation/agent.py` — 输出 ideation.md
+
+**`_execute()` 修改**：用 `save_artifact` 保存统一的 `ideation.md`（替代现有的 5 个散落文件）。
+
+保留 `research_synthesis.json` 作为辅助结构化数据（知识图谱需要）。
 
 ```python
-def _reflect_and_update_memory(self, state: ResearchState):
-    """用 LLM 分析执行日志，自动提取 learnings/mistakes 写入记忆。"""
-    config = REFLECTION_CONFIG.get(self.agent_name, REFLECTION_CONFIG["_default"])
-    if not config.get("enabled", True):
-        return
+# 构建统一的 ideation.md
+ideation_md = self._build_ideation_markdown(submitted_results)
+self.save_artifact(ideation_md, project_id, "ideation.md", "literature")
 
-    execution_log = getattr(self, "_last_execution_log", "")
-    if not execution_log or len(execution_log) < 100:
-        return
+# 保留 JSON 辅助文件（知识图谱、工具读取兼容）
+self.save_artifact({"papers": papers}, project_id, "papers_analyzed.json", "literature")
+```
 
-    try:
-        max_len = config.get("max_log_chars", 3500)
-        if len(execution_log) > max_len:
-            head = execution_log[:500]
-            tail = execution_log[-(max_len - 500):]
-            truncated_log = head + "\n...[truncated]...\n" + tail
-        else:
-            truncated_log = execution_log
+**新增 `_build_ideation_markdown()`** — 将 papers、gaps、hypothesis 格式化为一个完整的 Markdown 文档。
 
-        prompt = f"""Analyze this {self.agent_name} agent execution log and extract insights.
+**`_on_submit_result()`** — 只写 `state["hypothesis"]`（其余全在 ideation.md 中）。
 
-## Execution Log
-{truncated_log}
+### Step 4: `agents/planning/agent.py` + `prompts.py` — 输出 plan.md + 修正模式
 
-## Instructions
-Return a JSON object with:
-- "learnings": list of 0-3 concise, actionable insights worth remembering for future runs
-- "mistakes": list of 0-2 objects with keys "description", "severity" (1-5), "root_cause", "prevention"
+**a) `_execute()` 修改**：
+- 保存 `plan.md`（带 checklist）替代 `planning_document.md`
+- 保留 `data_config.json`（ExperimentAgent 的 DataFetcher 需要结构化配置）
+- 删除 `experiment_plan.json` 的保存（plan.md 中已包含所有信息）
 
-Only include genuinely useful insights. If routine with nothing notable, return empty lists.
-Return ONLY the JSON object."""
-
-        result = call_llm_json(
-            self.llm, prompt,
-            model=config.get("model", "haiku"),
-            max_tokens=config.get("max_tokens", 1024),
-            temperature=0.1,
+**b) `_build_task_prompt()` 双模式**：
+```python
+def _build_task_prompt(self, state):
+    feedback = state.get("experiment_feedback")
+    if feedback and feedback.get("verdict") == "revise_plan":
+        # 修正模式：读取被 ExperimentAgent 标记过的 plan.md
+        marked_plan = self.file_manager.load_text(
+            state["project_id"], "plan.md", subdir="experiments"
         )
-
-        project_id = state.get("project_id", "unknown")
-        for learning in result.get("learnings", []):
-            if isinstance(learning, str) and learning.strip():
-                self.memory.add_learning(learning.strip(), category=self.agent_name.title())
-                self.logger.info(f"Memory: added learning: {learning[:80]}")
-
-        for mistake in result.get("mistakes", []):
-            if isinstance(mistake, dict) and mistake.get("description"):
-                self.memory.record_mistake(
-                    description=mistake["description"],
-                    severity=mistake.get("severity", 3),
-                    root_cause=mistake.get("root_cause", "Unknown"),
-                    prevention=mistake.get("prevention", "TBD"),
-                    project_id=project_id,
-                )
-                self.logger.info(f"Memory: recorded mistake: {mistake['description'][:80]}")
-
-    except Exception as e:
-        self.logger.warning(f"Reflection failed (non-fatal): {e}")
+        return build_revision_task_prompt(
+            hypothesis=state["hypothesis"],
+            marked_plan=marked_plan,
+            feedback=feedback,
+            kg_context=self._build_kg_context(state["hypothesis"]),
+        )
+    else:
+        # 首次模式：读取 ideation.md
+        return build_task_prompt(...)
 ```
 
-**d) 修改 import**（L29）
+**c) `prompts.py` 新增 `build_revision_task_prompt()`**：
+- 注入被标记的 plan.md（可以看到哪些 `[x]` 哪些 `[ ]`）
+- 注入 feedback.analysis 和 suggestions
+- 指示 LLM 针对失败 step 修正方案
 
+**d) submit_result 格式调整**：要求 LLM 返回的 plan 包含 checklist 格式的 implementation_steps
+
+**e) `_on_submit_result()` 后新增**：从 submit_result 的 plan 数据构建 plan.md 并保存
+
+### Step 5: `agents/experiment/agent.py` — 读取 plan.md + 回写 checklist
+
+**a) `_build_task_prompt()` 修改**：
+- 读取 `plan.md` 而非从 state 提取 implementation_steps
+- prompt 中指示 LLM：每完成一个 step 要报告进度
+
+**b) `_execute()` 末尾新增 plan.md 回写逻辑**：
 ```python
-# 原来
-from config.agent_config import get_agent_config
-# 改为
-from config.agent_config import get_agent_config, REFLECTION_CONFIG
+# 读取 plan.md
+plan_md = self.file_manager.load_text(project_id, "plan.md", subdir="experiments")
+
+# 根据 metrics 和 success_criteria 更新 checklist
+updated_plan = self._update_plan_checklist(plan_md, metrics, success_criteria)
+
+# 回写 plan.md
+self.save_artifact(updated_plan, project_id, "plan.md", "experiments")
 ```
 
-### 2. `config/agent_config.py` — 添加反思配置
+**c) 新增 `_update_plan_checklist()`** — 解析 plan.md 中的 `- [ ]` 行，根据执行结果标记为 `[x]` 或 `[ ] — FAILED: reason`，并追加 `## Execution Results` 表格。
 
-在文件末尾添加：
+**d) 新增 `_build_experiment_markdown()`** — 构建 experiment.md（代码 + 指标 + 分析）。
 
-```python
-REFLECTION_CONFIG: Dict[str, Dict[str, Any]] = {
-    "_default": {
-        "enabled": True,
-        "model": "haiku",
-        "max_tokens": 1024,
-        "max_log_chars": 3500,
-    },
-    "ideation": {"enabled": True},
-    "planning": {"enabled": True},
-    "experiment": {"enabled": True},
-    "writing": {"enabled": True},
+**e) 修改结果评估逻辑**：
+- `_analyze_results()` 的 verdict 枚举新增 `"revise_plan"`
+- 将 feedback 写入 `state["experiment_feedback"]`
+- 移除 `state["iteration"] = max_retries` hack
+- 改为 `state["iteration"] = state.get("iteration", 0) + 1`
+
+**f) 移除对已删除 state 字段的写入**（`execution_logs`, `experiment_code`）
+
+### Step 6: `agents/writing/agent.py` — 读取上游 Markdown
+
+**`_build_state_summary()` 精简**：移除对 `papers_reviewed`、`research_gaps` 等已删字段的引用。WritingAgent 在 agentic loop 中通过 `read_upstream_file` 直接读取 `ideation.md`、`plan.md`、`experiment.md`。
+
+**`_on_submit_result()`** — 不再写 `state["report_draft"]` / `state["final_report"]`，仅保存到文件。
+
+### Step 7: `agents/planning/prompts.py` — prompt 调整
+
+**System prompt** 中 Workflow 步骤调整：
+- Step 1: 读取 `literature/ideation.md`（替代原来的 3 个文件）
+- Step 5: submit_result 格式中 `implementation_steps` 要求带序号，方便生成 checklist
+
+**submit_result 格式**中明确 checklist 要求：
+```json
+{
+  "implementation_steps": [
+    "Step 1: Specific actionable step (reference Paper X)",
+    "Step 2: ...",
+    ...
+  ]
 }
-
-
-def get_reflection_config(agent_name: str) -> Dict[str, Any]:
-    """获取 Agent 反思配置，合并默认值。"""
-    default = REFLECTION_CONFIG.get("_default", {})
-    override = REFLECTION_CONFIG.get(agent_name, {})
-    return {**default, **override}
 ```
 
-### 3. 文档更新
+PlanningAgent 在 `_execute()` 中将 steps 转换为 Markdown checklist 格式写入 plan.md。
+
+### Step 8: 文档更新
 
 | 文件 | 更新内容 |
 |------|---------|
-| `agents/base_agent.py` 文件头 | INPUT 添加 `REFLECTION_CONFIG`；POSITION 添加反思说明 |
-| `agents/CLAUDE.md` | base_agent.py 功能描述添加 `_reflect_and_update_memory()` |
-| `config/CLAUDE.md` | agent_config.py 功能描述添加 REFLECTION_CONFIG |
-| `config/agent_config.py` 文件头 | OUTPUT 添加 REFLECTION_CONFIG, get_reflection_config |
+| `core/state.py` 文件头 | OUTPUT 新增 ExperimentFeedback；说明 State 精简 |
+| `core/pipeline.py` 文件头 | 路由函数改为 should_continue_after_experiment |
+| `core/CLAUDE.md` | state.py / pipeline.py 更新说明 |
+| `agents/ideation/agent.py` 文件头 | 输出改为 ideation.md |
+| `agents/ideation/CLAUDE.md` | 更新产出文件说明 |
+| `agents/planning/agent.py` 文件头 | 输出改为 plan.md；新增修正模式 |
+| `agents/planning/prompts.py` 文件头 | 新增 build_revision_task_prompt |
+| `agents/planning/CLAUDE.md` | 更新：plan.md checklist + 修正模式 |
+| `agents/experiment/agent.py` 文件头 | 新增 plan.md 回写 + experiment.md |
+| `agents/experiment/CLAUDE.md` | 更新：checklist 回写 + feedback |
+| `agents/writing/agent.py` 文件头 | 适配 state 精简 |
+| `agents/writing/CLAUDE.md` | 更新 |
+| `agents/CLAUDE.md` | 架构说明更新 |
+| 根 `CLAUDE.md` | 数据流向图更新为 Markdown 流转 |
+
+---
+
+## 实施顺序与依赖
+
+```
+Step 1 (state.py)     ← 无依赖，先做
+Step 2 (pipeline.py)  ← 依赖 Step 1 (ExperimentFeedback)
+Step 3 (ideation)     ← 依赖 Step 1 (state 字段变化)
+Step 4 (planning)     ← 依赖 Step 1
+Step 5 (experiment)   ← 依赖 Step 1, Step 4 (plan.md 格式)
+Step 6 (writing)      ← 依赖 Step 1
+Step 7 (prompts)      ← 与 Step 4 一起做
+Step 8 (文档)         ← 最后做
+```
+
+建议顺序：**1 → 2 → 3 → 4+7 → 5 → 6 → 8**
 
 ---
 
 ## 关键设计决策
 
-1. **haiku 模型** — 反思是辅助功能，用最便宜的模型，每次 ~500 input + 200 output tokens
-2. **实例属性 `self._last_execution_log`** — 不修改 ResearchState，避免序列化问题
-3. **日志截取 head 500 + tail 3000** — 覆盖任务描述（头部）和最终结果（尾部）
-4. **try/except 全包裹** — 反思失败不影响主流程
-5. **可配置开关** — `REFLECTION_CONFIG` 中 `enabled: False` 即可关闭
+1. **Markdown 是主要协作界面** — Agent 间通过读取上游 .md 文件获取上下文，不依赖 state 传递大块数据
+2. **plan.md checklist 是进度追踪** — `- [ ]` / `- [x]` / `- [ ] — FAILED` 直接在文件中体现
+3. **ExperimentAgent 回写 plan.md** — 在 `_execute()` 末尾编程式更新，不在 agentic loop 中
+4. **data_config.json 保留** — DataFetcher 需要结构化配置，无法纯 Markdown 化
+5. **确定性路由** — checklist 失败 → `state["experiment_feedback"]["verdict"] = "revise_plan"` → 回到 planning
+6. **最多 2 次反馈** — `iteration < 2` 硬限制
 
 ---
 
 ## 验证
 
-1. **AST 语法检查**: `python -c "import ast; ast.parse(open('agents/base_agent.py', encoding='utf-8').read()); ast.parse(open('config/agent_config.py', encoding='utf-8').read())"`
-2. **导入检查**: `python -c "from config.agent_config import REFLECTION_CONFIG, get_reflection_config; print(REFLECTION_CONFIG)"`
-3. **功能验证**: 运行任意 Agent，检查日志中出现 `Memory: added learning:` 或 `Reflection failed (non-fatal):` 行
-4. **文件验证**: `data/{agent_name}/memory.md` 有新内容追加
-5. **关闭测试**: 将 `REFLECTION_CONFIG._default.enabled` 改为 `False`，确认无反思调用
+1. **AST 语法检查**: 所有修改文件 `ast.parse()` 通过
+2. **State 兼容**: `create_initial_state()` 不含已删除字段
+3. **路由测试**: feedback.verdict="revise_plan" + iteration=0 → 路由到 "planning"
+4. **Markdown 产出**: 运行 IdeationAgent 后 `outputs/{pid}/literature/ideation.md` 存在
+5. **Checklist 回写**: 运行 ExperimentAgent 后 `plan.md` 中有 `[x]` 标记
+6. **修正模式**: PlanningAgent 二次调用时 prompt 包含 "Revise" 和被标记的 plan.md
+7. **反馈边界**: iteration=2 时路由到 "failed"

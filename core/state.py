@@ -2,6 +2,8 @@
 State management for the research automation system.
 
 Defines the ResearchState TypedDict that flows through the entire pipeline.
+Markdown-driven architecture: Agents exchange context via .md files, State holds
+only routing signals and minimal shared data.
 """
 
 # ============================================================================
@@ -9,10 +11,11 @@ Defines the ResearchState TypedDict that flows through the entire pipeline.
 # INPUT:  外部依赖 - typing (TypedDict, List, Dict类型系统), dataclasses (数据类),
 #                   datetime (时间戳)
 # OUTPUT: 对外提供 - ResearchState, PaperMetadata, ExperimentPlan, BacktestResults,
-#                   RankedPaper, StructuredInsights, DeepInsights, ResearchGap,
-#                   Hypothesis, ResearchSynthesis等状态类型定义
+#                   ExperimentFeedback, RankedPaper, StructuredInsights, DeepInsights,
+#                   ResearchGap, Hypothesis, ResearchSynthesis等状态类型定义
 # POSITION: 系统地位 - Core/State (核心层-状态定义)
 #                     整个系统的数据契约,所有Agent和Pipeline的状态流转基础
+#                     Markdown 驱动架构：State 精简为路由信号，大块数据在 .md 文件中流转
 #
 # 注意：当本文件更新时,必须更新文件头注释和所属文件夹的CLAUDE.md
 # ============================================================================
@@ -58,6 +61,20 @@ class BacktestResults(TypedDict):
     total_trades: int
     avg_trade_duration: float
     volatility: float
+
+
+class ExperimentFeedback(TypedDict):
+    """Feedback from ExperimentAgent for pipeline routing.
+
+    Used by should_continue_after_experiment() to decide:
+    - "success" / "partial" → proceed to WritingAgent
+    - "revise_plan" → route back to PlanningAgent
+    - "failed" → end pipeline
+    """
+    verdict: str        # "success" | "partial" | "revise_plan" | "failed"
+    analysis: str
+    suggestions: list
+    failed_steps: list  # plan.md 中未完成的 step 描述
 
 
 # ============= Enhanced Literature Analysis Structures =============
@@ -174,38 +191,28 @@ class ResearchState(TypedDict):
     """
     Main state object that flows through the entire research pipeline.
 
-    This state is passed between agents and persisted at each checkpoint.
+    Markdown-driven: Large data (literature, plans, results) lives in .md files.
+    State holds only routing signals, identifiers, and minimal shared data.
     """
     # ============= Input =============
     research_direction: str          # e.g., "quantitative finance momentum strategies"
     project_id: str                  # Unique identifier: "2026-02-27_momentum_strategies"
 
-    # ============= Ideation Agent Outputs =============
-    papers_reviewed: List[PaperMetadata]
-    literature_summary: str          # Comprehensive analysis of papers
-    research_gaps: List[str]         # Identified opportunities
-    hypothesis: str                  # Concrete, testable research question
+    # ============= Ideation Agent Output =============
+    hypothesis: str                  # Concrete, testable research question (full text in ideation.md)
 
     # ============= Planning Agent Outputs =============
-    experiment_plan: ExperimentPlan
+    experiment_plan: ExperimentPlan  # Structured plan data (also in plan.md)
     methodology: str                 # Detailed methodology description
-    expected_outcomes: str           # What results would validate hypothesis
-    resource_requirements: Dict[str, str]  # Data sources, compute, etc.
 
     # ============= Experiment Agent Outputs =============
-    experiment_code: str             # Generated Python code for strategy
-    execution_logs: str              # Logs from backtest execution
     results_data: BacktestResults    # Performance metrics
     validation_status: Literal["success", "partial", "failed"]
     error_messages: Optional[str]    # Error details if validation failed
-
-    # ============= Writing Agent Outputs =============
-    report_draft: str                # Initial report draft
-    final_report: str                # Polished final report
-    report_path: str                 # Path to saved report file
+    experiment_feedback: Optional[ExperimentFeedback]  # Feedback loop for routing
 
     # ============= Metadata =============
-    iteration: int                   # Retry counter for failed experiments
+    iteration: int                   # Feedback loop counter (max 2)
     timestamp: str                   # ISO format timestamp
     status: Literal[
         "initialized",
@@ -247,10 +254,7 @@ def create_initial_state(
         research_direction=research_direction,
         project_id=project_id,
 
-        # Ideation outputs
-        papers_reviewed=[],
-        literature_summary="",
-        research_gaps=[],
+        # Ideation output
         hypothesis="",
 
         # Planning outputs
@@ -264,12 +268,8 @@ def create_initial_state(
             risk_factors=[]
         ),
         methodology="",
-        expected_outcomes="",
-        resource_requirements={},
 
         # Experiment outputs
-        experiment_code="",
-        execution_logs="",
         results_data=BacktestResults(
             total_return=0.0,
             cagr=0.0,
@@ -285,11 +285,7 @@ def create_initial_state(
         ),
         validation_status="success",
         error_messages=None,
-
-        # Writing outputs
-        report_draft="",
-        final_report="",
-        report_path="",
+        experiment_feedback=None,
 
         # Metadata
         iteration=0,

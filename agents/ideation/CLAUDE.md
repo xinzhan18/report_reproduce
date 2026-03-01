@@ -20,7 +20,9 @@ _execute(state)
 
 ### agent.py
 - **角色**: IdeationAgent 主类
-- **功能**: 继承 BaseAgent，实现 _execute() + 四个 hook 方法 + _build_kg_context()
+- **功能**: 继承 BaseAgent，实现 _execute() + 四个 hook 方法 + _build_kg_context() + _build_ideation_markdown()
+- **产出文件**: `literature/ideation.md` (核心统一文档), `literature/papers_analyzed.json`, `literature/research_synthesis.json`
+- **State 写入**: 仅写 `state["hypothesis"]`，其余数据全在 ideation.md 中
 
 ### tools.py
 - **角色**: Tool schema + executor
@@ -36,5 +38,6 @@ _execute(state)
 
 ## 更新历史
 
+- 2026-03-01: Markdown 驱动：输出统一 ideation.md，_on_submit_result 只写 hypothesis，移除散落文件
 - 2026-03-01: 通用工具提取到 common_tools.py (browse_webpage, google_search, search_knowledge_graph)
 - 2026-03-01: 创建子包，从 ideation_agent.py 重构为 Agentic Tool-Use 引擎

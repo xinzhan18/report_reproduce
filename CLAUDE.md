@@ -26,7 +26,7 @@ This system automates quantitative finance research from literature review throu
 │   - DailyScanner, PipelineRunner                           │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 4: Pipeline Orchestration (core/pipeline.py)         │
-│   - LangGraph workflow, state routing                      │
+│   - LangGraph workflow, feedback loop routing              │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 3: Agents (agents/)                                  │
 │   - BaseAgent + _agentic_loop() 通用 Tool-Use 循环        │
@@ -38,8 +38,8 @@ This system automates quantitative finance research from literature review throu
 │   - agents/llm.py (call_llm / call_llm_json / call_llm_tools) │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 2: Intelligence & State (core/)                      │
-│   - State management, Memory system, Knowledge graph       │
-│   - AgentMemory (core/memory.py), DocumentMemoryManager    │
+│   - State management (精简), Memory system, Knowledge graph│
+│   - AgentMemory (core/memory.py), ExperimentFeedback       │
 │   - Database, KnowledgeGraph                               │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 1.5: Market Data (market_data/)                      │
@@ -51,13 +51,20 @@ This system automates quantitative finance research from literature review throu
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 数据流向 (Data Flow)
+### 数据流向 (Data Flow) — Markdown 驱动
 
 ```
-Scheduler → Pipeline → Agents → Tools/MarketData → Data Storage
-    ↓          ↓         ↓            ↓                ↓
-  Config ← Core/State → Memory → Database → Outputs
+IdeationAgent → literature/ideation.md
+                      ↓
+PlanningAgent → experiments/plan.md (带 Implementation Checklist)
+                      ↓
+ExperimentAgent → plan.md (回写 checklist) + experiments/experiment.md
+                      ↓                ↓ (verdict=revise_plan)
+WritingAgent → reports/report.md    PlanningAgent (反馈回路，最多2次)
 ```
+
+State 仅传递路由信号 (hypothesis, experiment_plan, results_data, experiment_feedback)，
+大块数据通过 .md 文件在 Agent 间流转。
 
 ### 模块目录清单
 

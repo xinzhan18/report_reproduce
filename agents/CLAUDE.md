@@ -55,34 +55,47 @@ class MyAgent(BaseAgent):
 
 ### ideation/ (子包)
 - **角色**: 文献智能体 (Agentic Tool-Use 引擎) - 继承BaseAgent
-- **功能**: 通过 tool_use API 自主搜索论文、下载 PDF 深度阅读、查询知识图谱、综合分析、识别研究缺口、生成假设。7 个工具 (search_papers, fetch_recent_papers, download_and_read_pdf, search_knowledge_graph, browse_webpage, google_search, submit_result)
-- **子文件**: agent.py (主类), tools.py (工具 schema+executor), prompts.py (prompt 模板), __init__.py
+- **功能**: 自主搜索论文、下载 PDF、查询知识图谱、综合分析、生成假设。输出统一 `ideation.md`。7 个工具
+- **产出**: `literature/ideation.md` (核心), `literature/papers_analyzed.json`, `literature/research_synthesis.json`
+- **子文件**: agent.py (主类+_build_ideation_markdown), tools.py, prompts.py, __init__.py
 - **依赖**: PaperFetcher, PDFReader, KnowledgeGraph, BrowserManager
 
 ### planning/ (子包)
 - **角色**: 规划智能体 (Agentic Tool-Use 引擎) - 继承BaseAgent
-- **功能**: 通过 tool_use API 自主读取上游文献数据、查询知识图谱、验证数据可用性、设计实验方案。5 个工具 (read_upstream_file, search_knowledge_graph, browse_webpage, google_search, submit_result)
-- **子文件**: agent.py (主类), tools.py (工具 schema+executor), prompts.py (prompt 模板), __init__.py
+- **功能**: 读取 ideation.md、查询知识图谱、设计实验方案。输出 `plan.md` 带 Implementation Checklist。支持修正模式（反馈回路）。5 个工具
+- **产出**: `experiments/plan.md` (带 checklist), `experiments/data_config.json`
+- **子文件**: agent.py (主类+_build_plan_markdown), tools.py, prompts.py (含 build_revision_task_prompt), __init__.py
 - **依赖**: FileManager, KnowledgeGraph, BrowserManager
 
 ### experiment/ (子包)
 - **角色**: 实验智能体 (Agentic Tool-Use 引擎) - 继承BaseAgent
-- **功能**: 通过 tool_use API 自主编写代码、运行实验、调试修复、提交结果。8 个工具 (bash, write_file, read_file, delete_file, run_python, browse_webpage, google_search, submit_result)
-- **子文件**: agent.py (主类), sandbox.py (沙箱管理), tools.py (工具 schema+executor), prompts.py (prompt 模板), metrics.py (指标计算), __init__.py
+- **功能**: 自主编写代码、运行实验。执行后回写 plan.md checklist + 构建 experiment.md + 写入 ExperimentFeedback。8 个工具
+- **产出**: `experiments/plan.md` (回写), `experiments/experiment.md`, `experiments/strategy.py`, `experiments/backtest_results.json`
+- **子文件**: agent.py (主类+checklist回写+experiment.md), sandbox.py, tools.py, prompts.py, metrics.py, __init__.py
 - **依赖**: SandboxManager, DataFetcher, BrowserManager
 
 ### writing/ (子包)
 - **角色**: 写作智能体 (Agentic Tool-Use 引擎) - 继承BaseAgent
-- **功能**: 通过 tool_use API 自主读取所有上游产出、撰写各报告节、组装润色报告。5 个工具 (read_upstream_file, write_section, browse_webpage, google_search, submit_result)；通用工具从 common_tools.py 导入
-- **子文件**: agent.py (主类), tools.py (工具 schema+executor), prompts.py (prompt 模板), __init__.py
+- **功能**: 读取上游 ideation.md/plan.md/experiment.md，撰写报告。不写 state，仅保存文件。5 个工具
+- **产出**: `reports/final_report.md`, `reports/final_report_formatted.md`
+- **子文件**: agent.py (主类), tools.py, prompts.py, __init__.py
 - **依赖**: FileManager, BrowserManager
 
 ### __init__.py
 - **角色**: 模块初始化
 - **功能**: 导出四个Agent
 
+## Markdown 驱动数据流
+
+```
+IdeationAgent → ideation.md → PlanningAgent → plan.md → ExperimentAgent → plan.md (回写) + experiment.md → WritingAgent → report.md
+                                    ↑                                          │
+                                    └── revise_plan (feedback loop) ───────────┘
+```
+
 ## 更新历史
 
+- 2026-03-01: Markdown 驱动架构升级：ideation.md 统一输出、plan.md checklist + 回写、experiment.md 结果、ExperimentFeedback 反馈回路、State 精简
 - 2026-03-01: BaseAgent 新增 _reflect_and_update_memory()：执行完成后用 haiku LLM 分析日志，自动提取 learnings/mistakes 写入 AgentMemory
 - 2026-03-01: 10 项修复: Sortino 双重年化、BacktestEngine 假指标、PlanningAgent/WritingAgent prompt 修正、state["error"]→error_log、通用工具提取到 common_tools.py、删除死代码/配置、token 跟踪、沙箱安全增强
 - 2026-03-01: 全 Agent Agentic Tool-Use 架构升级：BaseAgent 新增 _agentic_loop() 通用循环 + ToolRegistry 注册中心 + BrowserManager 浏览器 + call_llm_tools()；IdeationAgent/PlanningAgent/WritingAgent 从单文件重构为子包，全部采用 agentic tool-use 模式；ExperimentAgent 适配 BaseAgent._agentic_loop()；删除旧单文件 ideation_agent.py/planning_agent.py/writing_agent.py
