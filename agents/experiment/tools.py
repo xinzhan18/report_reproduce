@@ -1,24 +1,25 @@
 """
 Tool 定义与执行器 — ExperimentAgent 工具集
 
-6 个沙箱工具 + 2 个浏览器工具 + submit_result。
+6 个沙箱专用工具 + 通用工具(browse_webpage, google_search from common_tools)。
 适配 ToolRegistry 的 (name, schema, executor) 格式。
 """
 
-# INPUT:  agents.experiment.sandbox (SandboxManager), agents.browser_manager
+# INPUT:  agents.experiment.sandbox (SandboxManager), agents.common_tools
 # OUTPUT: get_tool_definitions() 函数
 # POSITION: agents/experiment 子包 - 工具 schema + executor (ToolRegistry 格式)
 
 from __future__ import annotations
-import json
 from typing import TYPE_CHECKING
+
+from agents.common_tools import get_common_tools
 
 if TYPE_CHECKING:
     from agents.experiment.sandbox import SandboxManager
 
 
 # ======================================================================
-# Tool schemas (Anthropic API 格式)
+# Tool schemas (Anthropic API 格式) — ExperimentAgent 专用
 # ======================================================================
 
 BASH_SCHEMA = {
@@ -144,45 +145,9 @@ SUBMIT_RESULT_SCHEMA = {
     },
 }
 
-BROWSE_WEBPAGE_SCHEMA = {
-    "name": "browse_webpage",
-    "description": (
-        "Browse a webpage and extract its text content. "
-        "Use for: reading documentation, checking API references, researching libraries."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "url": {
-                "type": "string",
-                "description": "The URL to browse",
-            }
-        },
-        "required": ["url"],
-    },
-}
-
-GOOGLE_SEARCH_SCHEMA = {
-    "name": "google_search",
-    "description": (
-        "Search Google for information. "
-        "Use for: finding documentation, debugging errors, researching methods."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "The search query",
-            }
-        },
-        "required": ["query"],
-    },
-}
-
 
 # ======================================================================
-# Executors
+# Executors — ExperimentAgent 专用
 # ======================================================================
 
 def _exec_bash(tool_input: dict, sandbox: "SandboxManager" = None, timeout: int = 300, **_) -> str:
@@ -219,23 +184,6 @@ def _exec_run_python(tool_input: dict, sandbox: "SandboxManager" = None, timeout
     return "\n".join(parts)
 
 
-def _exec_browse_webpage(tool_input: dict, browser=None, **_) -> str:
-    if browser is None:
-        return "[ERROR] Browser not available"
-    result = browser.browse(tool_input["url"])
-    return f"Title: {result['title']}\n\n{result['text']}"
-
-
-def _exec_google_search(tool_input: dict, browser=None, **_) -> str:
-    if browser is None:
-        return "[ERROR] Browser not available"
-    results = browser.search_google(tool_input["query"])
-    lines = []
-    for r in results:
-        lines.append(f"- {r['title']}\n  {r['url']}\n  {r['snippet']}")
-    return "\n\n".join(lines) if lines else "No results found"
-
-
 # ======================================================================
 # ToolRegistry 注册接口
 # ======================================================================
@@ -258,10 +206,11 @@ def get_tool_definitions(include_browser: bool = False) -> list[tuple[str, dict,
         ("submit_result", SUBMIT_RESULT_SCHEMA, lambda tool_input, **_: ""),  # handled by _agentic_loop
     ]
 
-    if include_browser:
-        tools.extend([
-            ("browse_webpage", BROWSE_WEBPAGE_SCHEMA, _exec_browse_webpage),
-            ("google_search", GOOGLE_SEARCH_SCHEMA, _exec_google_search),
-        ])
+    # 通用工具: browse_webpage, google_search
+    tools.extend(get_common_tools(
+        include_browser=include_browser,
+        include_kg=False,
+        include_file=False,
+    ))
 
     return tools

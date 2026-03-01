@@ -31,7 +31,7 @@ def compute_metrics(portfolio_values: pd.Series, initial_capital: float = 100000
     vol = returns.std() * np.sqrt(252)
     years = len(returns) / 252
     cagr = ((1 + total_return) ** (1 / years) - 1) if years > 0 else 0.0
-    sortino_downside = returns[returns < 0].std() * np.sqrt(252)
+    sortino_downside = returns[returns < 0].std()
     sortino = (returns.mean() / sortino_downside * np.sqrt(252)) if sortino_downside > 0 else 0.0
     calmar = cagr / abs(max_dd) if max_dd != 0 else 0.0
     return {

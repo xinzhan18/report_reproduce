@@ -4,8 +4,8 @@
 
 ## 三行架构说明
 
-1. **职责**: 通过 Anthropic tool_use API 实现多轮 agentic 循环，LLM 自主读取所有上游产出、撰写报告各节、生成可视化、组装润色
-2. **依赖**: agents.base_agent (BaseAgent), agents.tool_registry, agents.browser_manager, tools.file_manager, core.state
+1. **职责**: 通过 Anthropic tool_use API 实现多轮 agentic 循环，LLM 自主读取所有上游产出、撰写报告各节、组装润色
+2. **依赖**: agents.base_agent (BaseAgent), agents.tool_registry, agents.browser_manager, agents.common_tools, tools.file_manager, core.state
 3. **输出**: WritingAgent 类（继承 BaseAgent，Pipeline 第四阶段）
 
 ## 架构模式
@@ -13,8 +13,10 @@
 ```
 _execute(state)
   └─ _agentic_loop(state, file_manager=..., project_id=..., browser=...)
-      └─ LLM ←→ tools (read_upstream_file/write_section/run_python/browse_webpage/google_search/submit_result)
+      └─ LLM ←→ tools (read_upstream_file/write_section/browse_webpage/google_search/submit_result)
 ```
+
+通用工具 (read_upstream_file, browse_webpage, google_search) 从 `agents/common_tools.py` 导入。
 
 ## 文件清单
 
@@ -24,7 +26,7 @@ _execute(state)
 
 ### tools.py
 - **角色**: Tool schema + executor
-- **功能**: 6 个工具的 Anthropic API 格式 schema + executor + get_tool_definitions()
+- **功能**: 5 个工具 (write_section, submit_result 专用 + read_upstream_file, browse_webpage, google_search 通用)
 
 ### prompts.py
 - **角色**: Prompt 模板
@@ -36,4 +38,5 @@ _execute(state)
 
 ## 更新历史
 
+- 2026-03-01: 删除 run_python 工具引用 (prompt 和 tools.py)；通用工具提取到 common_tools.py；工具数 6→5
 - 2026-03-01: 创建子包，从 writing_agent.py 重构为 Agentic Tool-Use 引擎

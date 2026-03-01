@@ -21,7 +21,7 @@ You have access to tools to read upstream analysis files, query a knowledge grap
 - **submit_result**: Submit the final experiment plan
 
 ## Workflow
-1. Read upstream files (structured_insights.json, research_synthesis.json, literature_summary.md)
+1. Read upstream files (papers_analyzed.json, research_synthesis.json, literature_summary.md)
 2. Query the knowledge graph for relevant strategies and metrics
 3. Optionally browse the web to verify data availability and methodology details
 4. Design a comprehensive experiment plan with:
@@ -71,7 +71,7 @@ def build_task_prompt(
 
 ### Instructions
 1. First, read upstream files to understand the literature context:
-   - `literature/structured_insights.json` — Deep paper analyses
+   - `literature/papers_analyzed.json` — Papers reviewed with metadata
    - `literature/research_synthesis.json` — Cross-paper synthesis
    - `literature/literature_summary.md` — Literature review summary
 2. Query the knowledge graph for relevant strategies and performance benchmarks

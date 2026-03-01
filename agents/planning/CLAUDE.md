@@ -36,4 +36,5 @@ _execute(state)
 
 ## 更新历史
 
+- 2026-03-01: 通用工具提取到 common_tools.py; prompt 修正 structured_insights.json → papers_analyzed.json
 - 2026-03-01: 创建子包，从 planning_agent.py 重构为 Agentic Tool-Use 引擎

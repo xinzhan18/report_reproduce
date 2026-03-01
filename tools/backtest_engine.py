@@ -103,6 +103,7 @@ class BacktestEngine:
         cerebro.addanalyzer(bt.analyzers.Returns, _name='returns')
         cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='trades')
         cerebro.addanalyzer(bt.analyzers.SQN, _name='sqn')
+        cerebro.addanalyzer(bt.analyzers.TimeReturn, _name='timereturn', timeframe=bt.TimeFrame.Days)
 
         # Capture stdout for execution logs
         old_stdout = sys.stdout
@@ -152,6 +153,13 @@ class BacktestEngine:
         returns_analysis = strategy.analyzers.returns.get_analysis()
         trade_analysis = strategy.analyzers.trades.get_analysis()
 
+        # Extract daily returns from TimeReturn analyzer
+        try:
+            timereturn = strategy.analyzers.timereturn.get_analysis()
+            daily_returns = pd.Series(timereturn) if timereturn else None
+        except (AttributeError, KeyError):
+            daily_returns = None
+
         # Calculate basic metrics
         total_return = (final_value - self.initial_capital) / self.initial_capital
         total_trades = trade_analysis.get('total', {}).get('total', 0)
@@ -183,18 +191,23 @@ class BacktestEngine:
             avg_bars = trade_analysis.get('len', {}).get('average', 0)
             avg_trade_duration = avg_bars or 0
 
-        # Estimate CAGR and volatility
-        years = 1  # Simplified - should calculate from actual date range
-        cagr = ((1 + total_return) ** (1 / years) - 1) if years > 0 else 0
+        # Calculate real metrics from daily returns
+        if daily_returns is not None and len(daily_returns) > 1:
+            years = len(daily_returns) / 252
+            cagr = ((1 + total_return) ** (1 / max(years, 1/252)) - 1) if years > 0 else 0
+            volatility = float(daily_returns.std() * np.sqrt(252))
+            downside = daily_returns[daily_returns < 0]
+            if len(downside) > 0 and downside.std() > 0:
+                sortino_ratio = float(daily_returns.mean() / downside.std() * np.sqrt(252))
+            else:
+                sortino_ratio = 0.0
+        else:
+            years = 1
+            cagr = total_return
+            volatility = 0.0
+            sortino_ratio = 0.0
 
-        # Sortino ratio (simplified - Backtrader doesn't have built-in)
-        sortino_ratio = sharpe_ratio * 1.2 if sharpe_ratio > 0 else 0
-
-        # Calmar ratio
         calmar_ratio = cagr / abs(max_drawdown) if max_drawdown != 0 else 0
-
-        # Estimate volatility from returns
-        volatility = 0.15  # Placeholder - would need returns series
 
         return {
             'final_value': final_value,

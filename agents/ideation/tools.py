@@ -1,21 +1,22 @@
 """
 Tool 定义与执行器 — IdeationAgent 工具集
 
-7 个工具：search_papers, fetch_recent_papers, download_and_read_pdf,
-search_knowledge_graph, browse_webpage, google_search, submit_result。
+4 个专用工具 + 通用工具(browse_webpage, google_search, search_knowledge_graph from common_tools)。
 适配 ToolRegistry 的 (name, schema, executor) 格式。
 """
 
-# INPUT:  tools.paper_fetcher, tools.pdf_reader, core.knowledge_graph, agents.browser_manager
+# INPUT:  tools.paper_fetcher, tools.pdf_reader, agents.common_tools
 # OUTPUT: get_tool_definitions() 函数
 # POSITION: agents/ideation 子包 - 工具 schema + executor (ToolRegistry 格式)
 
 from __future__ import annotations
 import json
 
+from agents.common_tools import get_common_tools
+
 
 # ======================================================================
-# Tool schemas (Anthropic API 格式)
+# Tool schemas (Anthropic API 格式) — IdeationAgent 专用
 # ======================================================================
 
 SEARCH_PAPERS_SCHEMA = {
@@ -86,64 +87,6 @@ DOWNLOAD_AND_READ_PDF_SCHEMA = {
     },
 }
 
-SEARCH_KNOWLEDGE_GRAPH_SCHEMA = {
-    "name": "search_knowledge_graph",
-    "description": (
-        "Query the knowledge graph for prior knowledge on a topic. "
-        "Returns related concepts, strategies, and metrics."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "Search query for the knowledge graph",
-            },
-            "node_type": {
-                "type": "string",
-                "description": "Optional: filter by node type (strategy, metric, concept, etc.)",
-            },
-        },
-        "required": ["query"],
-    },
-}
-
-BROWSE_WEBPAGE_SCHEMA = {
-    "name": "browse_webpage",
-    "description": (
-        "Browse a webpage and extract its text content. "
-        "Use for: reading documentation, checking references, researching topics."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "url": {
-                "type": "string",
-                "description": "The URL to browse",
-            }
-        },
-        "required": ["url"],
-    },
-}
-
-GOOGLE_SEARCH_SCHEMA = {
-    "name": "google_search",
-    "description": (
-        "Search Google for information. "
-        "Use for: finding additional references, checking methodology details."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "query": {
-                "type": "string",
-                "description": "The search query",
-            }
-        },
-        "required": ["query"],
-    },
-}
-
 SUBMIT_RESULT_SCHEMA = {
     "name": "submit_result",
     "description": (
@@ -184,7 +127,7 @@ SUBMIT_RESULT_SCHEMA = {
 
 
 # ======================================================================
-# Executors
+# Executors — IdeationAgent 专用
 # ======================================================================
 
 def _exec_search_papers(tool_input: dict, paper_fetcher=None, **_) -> str:
@@ -243,42 +186,10 @@ def _exec_download_and_read_pdf(tool_input: dict, pdf_reader=None, **_) -> str:
             result = f"# PDF Content for {arxiv_id}\n\n"
             for name, content in sections.items():
                 result += f"## {name.upper()}\n{content[:2000]}\n\n"
-            return result[:15000]  # 截断防止过长
+            return result[:15000]
         return f"# Full Text for {arxiv_id}\n\n{full_text[:10000]}"
     except Exception as e:
         return f"[ERROR] PDF processing failed for {arxiv_id}: {e}"
-
-
-def _exec_search_knowledge_graph(tool_input: dict, knowledge_graph=None, **_) -> str:
-    if knowledge_graph is None:
-        return "[ERROR] knowledge_graph not available"
-    query = tool_input["query"]
-    node_type = tool_input.get("node_type")
-    results = knowledge_graph.search_knowledge(query=query, node_type=node_type)
-    if not results:
-        return "No related knowledge found."
-    lines = []
-    for k in results[:10]:
-        node_type_str = k.get("node_type", "concept")
-        lines.append(f"- [{node_type_str}] {k['name']}: {k.get('description', '')[:200]}")
-    return f"Found {len(results)} related items:\n\n" + "\n".join(lines)
-
-
-def _exec_browse_webpage(tool_input: dict, browser=None, **_) -> str:
-    if browser is None:
-        return "[ERROR] Browser not available"
-    result = browser.browse(tool_input["url"])
-    return f"Title: {result['title']}\n\n{result['text']}"
-
-
-def _exec_google_search(tool_input: dict, browser=None, **_) -> str:
-    if browser is None:
-        return "[ERROR] Browser not available"
-    results = browser.search_google(tool_input["query"])
-    lines = []
-    for r in results:
-        lines.append(f"- {r['title']}\n  {r['url']}\n  {r['snippet']}")
-    return "\n\n".join(lines) if lines else "No results found"
 
 
 # ======================================================================
@@ -298,14 +209,14 @@ def get_tool_definitions(include_browser: bool = False) -> list[tuple[str, dict,
         ("search_papers", SEARCH_PAPERS_SCHEMA, _exec_search_papers),
         ("fetch_recent_papers", FETCH_RECENT_PAPERS_SCHEMA, _exec_fetch_recent_papers),
         ("download_and_read_pdf", DOWNLOAD_AND_READ_PDF_SCHEMA, _exec_download_and_read_pdf),
-        ("search_knowledge_graph", SEARCH_KNOWLEDGE_GRAPH_SCHEMA, _exec_search_knowledge_graph),
         ("submit_result", SUBMIT_RESULT_SCHEMA, lambda tool_input, **_: ""),  # handled by _agentic_loop
     ]
 
-    if include_browser:
-        tools.extend([
-            ("browse_webpage", BROWSE_WEBPAGE_SCHEMA, _exec_browse_webpage),
-            ("google_search", GOOGLE_SEARCH_SCHEMA, _exec_google_search),
-        ])
+    # 通用工具: browse_webpage, google_search, search_knowledge_graph
+    tools.extend(get_common_tools(
+        include_browser=include_browser,
+        include_kg=True,
+        include_file=False,
+    ))
 
     return tools

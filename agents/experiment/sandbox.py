@@ -11,6 +11,8 @@ SandboxManager — 实验代码的隔离执行环境
 
 import json
 import logging
+import os
+import shlex
 import shutil
 import subprocess
 import inspect
@@ -25,7 +27,10 @@ COMMAND_BLACKLIST = [
     "rm -rf /", "rm -rf /*", "rmdir /s", "del /f /s /q C:",
     "shutdown", "reboot", "mkfs", "format C:",
     ":(){:|:&};:", "fork bomb",
+    "sudo", "chmod 777", "wget", "curl", "nc -l", "netcat",
 ]
+
+SHELL_METACHARACTERS = [';', '|', '&&', '||', '$(', '`', '>>', '>', '<']
 
 # 输出截断限制
 MAX_STDOUT = 10000
@@ -73,7 +78,7 @@ class SandboxManager:
 
     def run_command(self, command: str, timeout: int = 300) -> dict:
         """执行 shell 命令，返回 {stdout, stderr, returncode}。"""
-        # 安全检查
+        # 安全检查: 黑名单
         cmd_lower = command.lower().strip()
         for blocked in COMMAND_BLACKLIST:
             if blocked in cmd_lower:
@@ -83,10 +88,29 @@ class SandboxManager:
                     "returncode": -1,
                 }
 
+        # 安全检查: shell 元字符
+        for meta in SHELL_METACHARACTERS:
+            if meta in command:
+                return {
+                    "stdout": "",
+                    "stderr": f"Blocked: shell metacharacter '{meta}' not allowed",
+                    "returncode": -1,
+                }
+
+        # 解析命令为参数列表 (shell=False)
+        try:
+            cmd_parts = shlex.split(command, posix=(os.name != 'nt'))
+        except ValueError as e:
+            return {
+                "stdout": "",
+                "stderr": f"Invalid command: {e}",
+                "returncode": -1,
+            }
+
         try:
             result = subprocess.run(
-                command,
-                shell=True,
+                cmd_parts,
+                shell=False,
                 cwd=str(self.workdir),
                 capture_output=True,
                 text=True,
@@ -96,6 +120,12 @@ class SandboxManager:
                 "stdout": result.stdout[:MAX_STDOUT],
                 "stderr": result.stderr[:MAX_STDERR],
                 "returncode": result.returncode,
+            }
+        except FileNotFoundError:
+            return {
+                "stdout": "",
+                "stderr": f"Command not found: {cmd_parts[0]}",
+                "returncode": -1,
             }
         except subprocess.TimeoutExpired:
             return {

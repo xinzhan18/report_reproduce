@@ -5,7 +5,7 @@
 ## 三行架构说明
 
 1. **职责**: 通过 Anthropic tool_use API 实现多轮 agentic 循环，LLM 自主调用 bash/文件读写/Python 执行等工具完成实验
-2. **依赖**: agents.base_agent (BaseAgent), agents.tool_registry, agents.browser_manager, core.state, tools.file_manager, market_data.DataFetcher, config.llm_config
+2. **依赖**: agents.base_agent (BaseAgent), agents.tool_registry, agents.browser_manager, agents.common_tools, core.state, tools.file_manager, market_data.DataFetcher, config.llm_config
 3. **输出**: ExperimentAgent 类（继承 BaseAgent，Pipeline 第三阶段）
 
 ## 架构模式
@@ -18,7 +18,7 @@ _execute(state)
       └─ LLM ←→ tools (bash/write_file/read_file/delete_file/run_python/browse_webpage/google_search/submit_result)
 ```
 
-使用 BaseAgent._agentic_loop() 通用循环。
+使用 BaseAgent._agentic_loop() 通用循环。通用工具 (browse_webpage, google_search) 从 `agents/common_tools.py` 导入。
 
 ## 文件清单
 
@@ -28,11 +28,11 @@ _execute(state)
 
 ### sandbox.py
 - **角色**: SandboxManager 沙箱管理器
-- **功能**: 工作目录隔离、文件读写、进程执行（subprocess）、路径逃逸防护、命令黑名单、输出截断
+- **功能**: 工作目录隔离、文件读写、进程执行（shell=False 安全执行）、路径逃逸防护、命令黑名单、元字符检测、输出截断
 
 ### tools.py
 - **角色**: Tool schema + executor
-- **功能**: 8 个工具的 Anthropic API 格式 schema + executor + get_tool_definitions()；适配 ToolRegistry 格式
+- **功能**: 8 个工具 (bash, write_file, read_file, delete_file, run_python, submit_result 专用 + browse_webpage, google_search 通用)
 
 ### prompts.py
 - **角色**: Prompt 模板
@@ -58,5 +58,6 @@ _execute(state)
 
 ## 更新历史
 
+- 2026-03-01: Sortino 双重年化修复 (metrics.py)；sandbox 安全增强 (shell=False, 元字符检测)；通用工具提取到 common_tools.py
 - 2026-03-01: 适配 BaseAgent._agentic_loop() 通用循环；tools.py 适配 ToolRegistry 格式 (get_tool_definitions)；新增浏览器工具 (browse_webpage, google_search)
 - 2026-03-01: 创建子包，从单文件 experiment_agent.py 重构为 Agentic Tool-Use 引擎

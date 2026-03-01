@@ -86,7 +86,7 @@ class BaseAgent(ABC):
         except Exception as e:
             self.logger.error(f"Error in {self.agent_name} agent: {e}", exc_info=True)
             state["status"] = f"error_{self.agent_name}"
-            state["error"] = str(e)
+            state["error_log"] = str(e)
             raise
 
     @abstractmethod
@@ -152,6 +152,8 @@ class BaseAgent(ABC):
         messages = [{"role": "user", "content": task_prompt}]
         log_lines = []
         submitted_results = None
+        total_input_tokens = 0
+        total_output_tokens = 0
 
         for turn in range(1, max_turns + 1):
             self.logger.info(f"--- Agentic Turn {turn}/{max_turns} ---")
@@ -169,6 +171,15 @@ class BaseAgent(ABC):
                 self.logger.error(f"LLM API call failed: {e}")
                 log_lines.append(f"[ERROR] LLM API call failed: {e}")
                 break
+
+            # 记录 token 使用
+            if hasattr(response, 'usage'):
+                total_input_tokens += response.usage.input_tokens
+                total_output_tokens += response.usage.output_tokens
+                self.logger.info(
+                    f"Turn {turn} tokens: in={response.usage.input_tokens}, "
+                    f"out={response.usage.output_tokens}"
+                )
 
             # 记录 assistant response
             messages.append({"role": "assistant", "content": response.content})
@@ -235,6 +246,17 @@ class BaseAgent(ABC):
         else:
             self.logger.warning(f"Agentic loop reached max turns ({max_turns})")
             log_lines.append(f"[WARNING] Reached max turns ({max_turns})")
+
+        self.logger.info(
+            f"Token summary: input={total_input_tokens}, "
+            f"output={total_output_tokens}, "
+            f"total={total_input_tokens + total_output_tokens}"
+        )
+        log_lines.append(
+            f"\n[TOKEN SUMMARY] input={total_input_tokens}, "
+            f"output={total_output_tokens}, "
+            f"total={total_input_tokens + total_output_tokens}"
+        )
 
         execution_log = "\n".join(log_lines)
 

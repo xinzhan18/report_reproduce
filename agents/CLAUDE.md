@@ -49,6 +49,10 @@ class MyAgent(BaseAgent):
 - **角色**: Playwright 浏览器管理器
 - **功能**: `BrowserManager` 单例类,提供 `browse()` 网页浏览和 `search_google()` 搜索；惰性初始化；Playwright 不可用时 graceful degradation
 
+### common_tools.py
+- **角色**: 通用工具定义 (Shared Tool Definitions)
+- **功能**: 4 个跨 Agent 共享的工具 schema + executor (browse_webpage, google_search, search_knowledge_graph, read_upstream_file)；`get_common_tools()` 接口供各 Agent tools.py 导入
+
 ### ideation/ (子包)
 - **角色**: 文献智能体 (Agentic Tool-Use 引擎) - 继承BaseAgent
 - **功能**: 通过 tool_use API 自主搜索论文、下载 PDF 深度阅读、查询知识图谱、综合分析、识别研究缺口、生成假设。7 个工具 (search_papers, fetch_recent_papers, download_and_read_pdf, search_knowledge_graph, browse_webpage, google_search, submit_result)
@@ -69,7 +73,7 @@ class MyAgent(BaseAgent):
 
 ### writing/ (子包)
 - **角色**: 写作智能体 (Agentic Tool-Use 引擎) - 继承BaseAgent
-- **功能**: 通过 tool_use API 自主读取所有上游产出、撰写各报告节、生成可视化、组装润色报告。6 个工具 (read_upstream_file, write_section, run_python, browse_webpage, google_search, submit_result)
+- **功能**: 通过 tool_use API 自主读取所有上游产出、撰写各报告节、组装润色报告。5 个工具 (read_upstream_file, write_section, browse_webpage, google_search, submit_result)；通用工具从 common_tools.py 导入
 - **子文件**: agent.py (主类), tools.py (工具 schema+executor), prompts.py (prompt 模板), __init__.py
 - **依赖**: FileManager, BrowserManager
 
@@ -79,6 +83,7 @@ class MyAgent(BaseAgent):
 
 ## 更新历史
 
+- 2026-03-01: 10 项修复: Sortino 双重年化、BacktestEngine 假指标、PlanningAgent/WritingAgent prompt 修正、state["error"]→error_log、通用工具提取到 common_tools.py、删除死代码/配置、token 跟踪、沙箱安全增强
 - 2026-03-01: 全 Agent Agentic Tool-Use 架构升级：BaseAgent 新增 _agentic_loop() 通用循环 + ToolRegistry 注册中心 + BrowserManager 浏览器 + call_llm_tools()；IdeationAgent/PlanningAgent/WritingAgent 从单文件重构为子包，全部采用 agentic tool-use 模式；ExperimentAgent 适配 BaseAgent._agentic_loop()；删除旧单文件 ideation_agent.py/planning_agent.py/writing_agent.py
 - 2026-03-01: ExperimentAgent 升级为 Agentic Tool-Use 引擎
 - 2026-02-28: 重构：消除 services/utils 间接层，扁平化目录结构

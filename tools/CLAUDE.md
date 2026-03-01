@@ -16,7 +16,7 @@
 
 ### backtest_engine.py
 - **角色**: 回测引擎 (Backtesting Engine)
-- **功能**: 使用Backtrader执行策略回测,计算收益率、夏普比率等指标
+- **功能**: 使用Backtrader执行策略回测,从日收益率计算真实指标(Sharpe/Sortino/CAGR/Volatility/Calmar)
 
 ### file_manager.py
 - **角色**: 文件管理器 (File Manager)
@@ -48,5 +48,6 @@
 
 ## 更新历史
 
+- 2026-03-01: backtest_engine.py 假指标修复：添加 TimeReturn analyzer，从日收益率计算真实 Sortino/CAGR/Volatility
 - 2026-03-01: data_fetcher.py 迁移到 market_data/ 模块
 - 2026-02-27: 创建此文档,记录当前架构

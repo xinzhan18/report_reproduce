@@ -47,7 +47,6 @@ class WritingAgent(BaseAgent):
         include_browser = is_playwright_available()
         tool_defs = get_tool_definitions(
             include_browser=include_browser,
-            include_python=False,  # 默认不启用 Python，需要 sandbox
         )
         self.tool_registry.register_many(tool_defs)
         self.logger.info(f"Registered {len(tool_defs)} tools: {self.tool_registry.get_tool_names()}")

@@ -7,7 +7,6 @@ Pipeline 第一阶段：LLM 拥有论文搜索、PDF 阅读、知识图谱查询
 
 # INPUT:  agents.base_agent (BaseAgent), core.state (ResearchState),
 #         tools.paper_fetcher, tools.file_manager, tools.pdf_reader,
-#         core.document_memory_manager,
 #         agents.ideation.tools (get_tool_definitions),
 #         agents.ideation.prompts (SYSTEM_PROMPT_TEMPLATE, build_task_prompt),
 #         agents.browser_manager (BrowserManager, is_playwright_available)
