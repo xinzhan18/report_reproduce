@@ -7,7 +7,7 @@ Pipeline 第二阶段：LLM 拥有上游文件读取、知识图谱查询、浏�
 支持修正模式：当 ExperimentAgent 回写失败标记后，pipeline 路由回此 Agent 读取标记后的 plan.md 修正方案。
 """
 
-# INPUT:  agents.base_agent (BaseAgent), core.state (ResearchState, ExperimentPlan),
+# INPUT:  agents.base_agent (BaseAgent), core.state (ResearchState, FactorPlan),
 #         tools.file_manager (FileManager),
 #         agents.planning.tools (get_tool_definitions),
 #         agents.planning.prompts (SYSTEM_PROMPT_TEMPLATE, build_task_prompt, build_revision_task_prompt),
@@ -26,7 +26,7 @@ import logging
 from anthropic import Anthropic
 
 from agents.base_agent import BaseAgent
-from core.state import ResearchState, ExperimentPlan
+from core.state import ResearchState, FactorPlan
 from tools.file_manager import FileManager
 from agents.planning.tools import get_tool_definitions
 from agents.planning.prompts import SYSTEM_PROMPT_TEMPLATE, build_task_prompt, build_revision_task_prompt
@@ -84,14 +84,18 @@ class PlanningAgent(BaseAgent):
     def _on_submit_result(self, results: dict, state: ResearchState):
         """映射 submit_result 结果到 state。"""
         plan_data = results.get("experiment_plan", {})
-        state["experiment_plan"] = ExperimentPlan(
+        state["experiment_plan"] = FactorPlan(
             objective=plan_data.get("objective", ""),
-            methodology=plan_data.get("methodology", ""),
+            factor_description=plan_data.get("factor_description", ""),
+            factor_formula=plan_data.get("factor_formula", ""),
             data_requirements=plan_data.get("data_requirements", []),
             implementation_steps=plan_data.get("implementation_steps", []),
+            test_universe=plan_data.get("test_universe", "a_shares"),
+            test_period=plan_data.get("test_period", ""),
+            rebalance_frequency=plan_data.get("rebalance_frequency", "daily"),
             success_criteria=plan_data.get("success_criteria", {}),
-            estimated_runtime=plan_data.get("estimated_runtime", "Unknown"),
             risk_factors=plan_data.get("risk_factors", []),
+            estimated_runtime=plan_data.get("estimated_runtime", "Unknown"),
         )
         state["methodology"] = results.get("methodology", "")
 
@@ -149,14 +153,18 @@ class PlanningAgent(BaseAgent):
             )
         else:
             self.logger.warning("Agentic loop ended without submitting results")
-            state.setdefault("experiment_plan", ExperimentPlan(
-                objective="Test hypothesis through backtesting",
-                methodology="Implement and validate trading strategy",
+            state.setdefault("experiment_plan", FactorPlan(
+                objective="Test factor hypothesis through IC analysis",
+                factor_description="",
+                factor_formula="",
                 data_requirements=["Historical OHLCV data"],
-                implementation_steps=["Design strategy", "Implement code", "Run backtest"],
-                success_criteria={"sharpe_ratio": 1.0},
-                estimated_runtime="1 hour",
+                implementation_steps=["Compute factor values", "Run evaluate_factor", "Analyze results"],
+                test_universe="a_shares",
+                test_period="",
+                rebalance_frequency="daily",
+                success_criteria={"ic_mean": 0.02, "icir": 0.3},
                 risk_factors=["Data quality", "Overfitting"],
+                estimated_runtime="1 hour",
             ))
             state.setdefault("methodology", "")
 
@@ -197,14 +205,19 @@ class PlanningAgent(BaseAgent):
         return "\n".join(lines) + "\n"
 
     def _build_plan_markdown(self, state: ResearchState) -> str:
-        """构建 plan.md，将 implementation_steps 转为 checklist 格式。"""
+        """构建 plan.md，将 implementation_steps 转为 checklist 格式（因子研究版本）。"""
         experiment_plan = state["experiment_plan"]
         methodology = state.get("methodology", "")
 
         # Success criteria 格式化
         criteria_lines = []
         for metric, threshold in experiment_plan.get("success_criteria", {}).items():
-            criteria_lines.append(f"- {metric} > {threshold}" if isinstance(threshold, (int, float)) else f"- {metric}: {threshold}")
+            if metric in ("turnover_mean", "max_turnover"):
+                criteria_lines.append(f"- {metric} < {threshold}")
+            elif isinstance(threshold, (int, float)):
+                criteria_lines.append(f"- {metric} > {threshold}")
+            else:
+                criteria_lines.append(f"- {metric}: {threshold}")
 
         # Implementation checklist
         checklist_lines = []
@@ -214,15 +227,28 @@ class PlanningAgent(BaseAgent):
         # Risk factors
         risk_lines = [f"- {risk}" for risk in experiment_plan.get("risk_factors", [])]
 
-        return f"""# Experiment Plan
+        return f"""# Factor Test Plan
 
 ## Objective
 {experiment_plan.get('objective', '')}
 
-## Methodology
-{methodology or experiment_plan.get('methodology', '')}
+## Factor Description
+{experiment_plan.get('factor_description', '')}
 
-## Data Configuration
+## Factor Formula
+```
+{experiment_plan.get('factor_formula', '')}
+```
+
+## Methodology
+{methodology}
+
+## Test Configuration
+- **Universe**: {experiment_plan.get('test_universe', 'a_shares')}
+- **Test Period**: {experiment_plan.get('test_period', '')}
+- **Rebalance Frequency**: {experiment_plan.get('rebalance_frequency', 'daily')}
+
+## Data Requirements
 {chr(10).join(f"- {req}" for req in experiment_plan.get('data_requirements', []))}
 
 ## Implementation Checklist

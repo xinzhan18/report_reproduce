@@ -12,7 +12,7 @@
 
 ### state.py
 - **角色**: 状态定义 (State Schema)
-- **功能**: 定义 ResearchState TypedDict (精简版: 路由信号 + 最小共享数据)、ExperimentFeedback (反馈回路)、ExperimentPlan、BacktestResults 等类型。Markdown 驱动架构：大块数据在 .md 文件中流转，State 不再存储 papers_reviewed/literature_summary/experiment_code 等冗余字段
+- **功能**: 定义 ResearchState TypedDict (精简版: 路由信号 + 最小共享数据)、ExperimentFeedback (反馈回路)、FactorPlan (因子测试方案)、FactorResults (因子评估指标) 等类型。Markdown 驱动架构：大块数据在 .md 文件中流转
 
 ### pipeline.py
 - **角色**: Pipeline编排器 (Workflow Orchestration)
@@ -51,6 +51,7 @@
 
 ## 更新历史
 
+- 2026-03-02: 因子研究改造：state.py 中 ExperimentPlan→FactorPlan, BacktestResults→FactorResults；pipeline.py 中 DataFetcher→LocalDataLoader
 - 2026-03-01: Markdown 驱动架构升级：state.py 精简移除冗余字段 + 新增 ExperimentFeedback；pipeline.py 新增 experiment→planning 反馈回路 (should_continue_after_experiment)
 - 2026-03-01: 删除 5 个死代码模块 (iteration_memory, document_tracker, logging_config, document_memory_manager, database_extensions)
 - 2026-02-28: 重构: 用 memory.py (AgentMemory) 替代 agent_memory_manager.py，删除 agent_persona.py 和 self_reflection.py

@@ -34,6 +34,7 @@
 
 ## 更新历史
 
+- 2026-03-02: agent_config.py 因子研究改造：ideation keywords 改为因子相关，experiment validation_metrics 改为 IC/ICIR/turnover/coverage
 - 2026-03-01: agent_config.py 新增 REFLECTION_CONFIG 字典和 get_reflection_config() 函数，支持 Agent 反思记忆更新配置
 - 2026-03-01: 删除 multi_llm_config.py、llm_config_oauth.py、auth_config.py (死代码清理)
 - 2026-02-27: 创建此文档,记录当前架构

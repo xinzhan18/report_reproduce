@@ -124,21 +124,22 @@ class WritingAgent(BaseAgent):
     # ==================================================================
 
     def _build_state_summary(self, state: ResearchState) -> str:
-        """构建 state 摘要，供 task prompt 使用。"""
+        """构建 state 摘要，供 task prompt 使用（因子研究版本）。"""
         parts = [
             f"**Project ID**: {state['project_id']}",
             f"**Research Direction**: {state['research_direction']}",
             f"**Hypothesis**: {state['hypothesis'][:500]}",
         ]
 
-        # 结果摘要
+        # 因子评估结果摘要
         rd = state.get("results_data")
         if rd:
             parts.append(f"**Validation Status**: {state.get('validation_status', 'N/A')}")
-            parts.append(f"**Key Metrics**: Sharpe={rd.get('sharpe_ratio', 0):.2f}, "
-                         f"Return={rd.get('total_return', 0)*100:.1f}%, "
-                         f"MaxDD={rd.get('max_drawdown', 0)*100:.1f}%, "
-                         f"Trades={rd.get('total_trades', 0)}")
+            parts.append(f"**Key Metrics**: IC Mean={rd.get('ic_mean', 0):.4f}, "
+                         f"ICIR={rd.get('icir', 0):.4f}, "
+                         f"Rank IC={rd.get('rank_ic_mean', 0):.4f}, "
+                         f"L/S Return={rd.get('long_short_return', 0):.4f}, "
+                         f"Monotonicity={rd.get('monotonicity_score', 0):.2f}")
 
         return "\n".join(parts)
 

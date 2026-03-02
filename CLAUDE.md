@@ -4,9 +4,9 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project Overview
 
-**Research Automation Agent System (FARS)** - A fully automated research system for quantitative finance that orchestrates the entire research lifecycle using a multi-agent collaboration architecture powered by Claude AI (Anthropic API).
+**Factor Automated Research System (FARS)** - A fully automated quantitative factor research system that orchestrates the entire research lifecycle using a multi-agent collaboration architecture powered by Claude AI (Anthropic API).
 
-This system automates quantitative finance research from literature review through experiment execution to report generation using four specialized AI agents working in a pipeline.
+This system automates quantitative factor research from literature review (factor construction methods) through factor evaluation (IC/ICIR analysis) to report generation using four specialized AI agents working in a pipeline. Targets A-share and cryptocurrency markets with local panel data.
 
 
 
@@ -43,7 +43,7 @@ This system automates quantitative finance research from literature review throu
 │   - Database, KnowledgeGraph                               │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 1.5: Market Data (market_data/)                      │
-│   - DataFetcher, DataSource (yfinance/akshare/ccxt)        │
+│   - LocalDataLoader (本地 CSV 面板数据加载)                │
 ├─────────────────────────────────────────────────────────────┤
 │ Layer 1: Tools & Configuration (tools/, config/)           │
 │   - PaperFetcher, BacktestEngine, FileManager              │
@@ -63,18 +63,18 @@ ExperimentAgent → plan.md (回写 checklist) + experiments/experiment.md
 WritingAgent → reports/report.md    PlanningAgent (反馈回路，最多2次)
 ```
 
-State 仅传递路由信号 (hypothesis, experiment_plan, results_data, experiment_feedback)，
+State 仅传递路由信号 (hypothesis, experiment_plan: FactorPlan, results_data: FactorResults, experiment_feedback)，
 大块数据通过 .md 文件在 Agent 间流转。
 
 ### 模块目录清单
 
 每个模块都有独立的CLAUDE.md文档：
 
-- **agents/** - AI智能体层 (BaseAgent + ToolRegistry + BrowserManager + llm.py; 4 个 Agent 均为子包，全部采用 Agentic Tool-Use 引擎: ideation/7工具, planning/5工具, experiment/8工具, writing/6工具)
-- **config/** - 系统配置层 (LLM、认证、数据源配置)
-- **core/** - 核心基础设施层 (状态、Pipeline、AgentMemory、知识图谱、数据库)
+- **agents/** - AI智能体层 (BaseAgent + ToolRegistry + BrowserManager + llm.py; 4 个 Agent 均为子包，全部采用 Agentic Tool-Use 引擎: ideation/7工具, planning/5工具, experiment/8工具, writing/5工具)
+- **config/** - 系统配置层 (LLM、Agent参数含因子验证阈值、数据源配置)
+- **core/** - 核心基础设施层 (状态 FactorPlan/FactorResults、Pipeline、AgentMemory、知识图谱、数据库)
 - **data/** - Agent记忆数据 (persona.md, memory.md, mistakes.md, daily/)
-- **market_data/** - 数据层 (DataFetcher路由器, DataSource抽象: yfinance/akshare/ccxt)
+- **market_data/** - 数据层 (LocalDataLoader 本地 CSV 面板数据加载器)
 - **tools/** - 工具库层 (论文获取、回测、文件管理)
 - **scheduler/** - 调度自动化层 (定时任务、执行器)
 - **tests/** - 测试套件层

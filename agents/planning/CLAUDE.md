@@ -38,6 +38,7 @@ _execute(state)
 
 ## 更新历史
 
+- 2026-03-02: 因子研究改造：ExperimentPlan→FactorPlan, prompt 重写为因子测试方案设计, _build_plan_markdown 新增因子描述/公式/测试配置
 - 2026-03-01: Markdown 驱动：输出 plan.md 带 checklist，支持首次+修正双模式，新增 build_revision_task_prompt
 - 2026-03-01: 通用工具提取到 common_tools.py; prompt 修正 structured_insights.json → papers_analyzed.json
 - 2026-03-01: 创建子包，从 planning_agent.py 重构为 Agentic Tool-Use 引擎

@@ -1,5 +1,7 @@
 """
 Prompt 模板 — ExperimentAgent 的 system prompt 和 task prompt
+
+因子研究模式：计算截面因子值 → 调用 evaluate_factor → 提交结果。
 """
 
 # INPUT:  json
@@ -9,7 +11,7 @@ Prompt 模板 — ExperimentAgent 的 system prompt 和 task prompt
 import json
 
 SYSTEM_PROMPT_TEMPLATE = """\
-You are an expert quantitative finance researcher and Python programmer.
+You are an expert quantitative factor researcher and Python programmer.
 You have access to tools to write files, run shell commands, execute Python scripts, and submit final results.
 
 ## Your Tools
@@ -24,19 +26,22 @@ You have access to tools to write files, run shell commands, execute Python scri
 ```
 data/                    # Market data CSV files
   <SYMBOL>.csv           # Each file: columns = open, high, low, close, volume; index = DatetimeIndex
-data_manifest.json       # Maps symbol name -> CSV path
-compute_metrics.py       # Helper: compute_metrics(portfolio_values, initial_capital) -> dict
+  panel.csv              # Long-format panel data with 'symbol' column
+data_manifest.json       # Maps symbol name -> CSV path, plus _meta (total_symbols, columns)
+evaluate_factor.py       # Helper: evaluate_factor(factor_values, price_data, n_groups, holding_period) -> dict
 ```
 
 ## Workflow
 1. Read `data_manifest.json` to see available data files
-2. Write a Python strategy script (e.g. `strategy.py`)
-3. Run the script with `run_python`
-4. If there are errors, debug and iterate:
-   - Read error output
-   - Fix the code
-   - Re-run
-5. Once you have valid results, call `submit_result` with the metrics
+2. Write a factor computation script (e.g. `factor_code.py`)
+3. The script should:
+   a. Load price data from CSVs and build a price matrix (index=date, columns=symbols)
+   b. Compute cross-sectional factor values (index=date, columns=symbols)
+   c. Call `evaluate_factor(factor_values, price_data)` to get evaluation metrics
+   d. Print or save the metrics
+4. Run the script with `run_python`
+5. If there are errors, debug and iterate
+6. Once you have valid metrics, call `submit_result`
 
 ## Data Loading Pattern
 ```python
@@ -46,49 +51,62 @@ import json
 with open("data_manifest.json") as f:
     manifest = json.load(f)
 
-# Load a single symbol
-df = pd.read_csv(manifest["SPY"], index_col=0, parse_dates=True)
+meta = manifest.pop("_meta")
+print(f"Total symbols: {{meta['total_symbols']}}, columns: {{meta['columns']}}")
+
+# Build price matrix (close prices)
+price_frames = {{}}
+for symbol, csv_path in manifest.items():
+    df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
+    price_frames[symbol] = df["close"]
+
+price_data = pd.DataFrame(price_frames)
 ```
 
-## compute_metrics Usage
+## evaluate_factor Usage
 ```python
-from compute_metrics import compute_metrics
+from evaluate_factor import evaluate_factor
 
-# portfolio_values: pd.Series of daily portfolio value
-metrics = compute_metrics(portfolio_values, initial_capital=100000)
-# Returns: total_return, sharpe_ratio, max_drawdown, volatility, cagr, sortino_ratio, calmar_ratio
+# factor_values: pd.DataFrame, index=date, columns=symbols
+# price_data: pd.DataFrame, index=date, columns=symbols (close prices)
+metrics = evaluate_factor(factor_values, price_data, n_groups=5, holding_period=1)
+# Returns: ic_mean, ic_std, icir, rank_ic_mean, rank_icir, turnover_mean,
+#          long_short_return, top_group_return, bottom_group_return,
+#          monotonicity_score, factor_coverage
 ```
 
 ## submit_result Format
 ```json
-{
-  "results": {
-    "metrics": {
-      "total_return": 0.15,
-      "sharpe_ratio": 1.2,
-      "max_drawdown": -0.08,
-      "total_trades": 42,
-      "win_rate": 0.55,
-      "volatility": 0.12,
-      "cagr": 0.14,
-      "sortino_ratio": 1.5,
-      "calmar_ratio": 1.75
-    },
-    "description": "Brief description of strategy and results"
-  }
-}
+{{
+  "results": {{
+    "metrics": {{
+      "ic_mean": 0.03,
+      "icir": 0.5,
+      "rank_ic_mean": 0.04,
+      "rank_icir": 0.6,
+      "turnover_mean": 0.3,
+      "long_short_return": 0.15,
+      "top_group_return": 0.20,
+      "bottom_group_return": 0.05,
+      "monotonicity_score": 0.8,
+      "factor_coverage": 0.95
+    }},
+    "description": "Brief description of the factor and evaluation results"
+  }}
+}}
 ```
-Required metrics: `total_return`, `sharpe_ratio`, `max_drawdown`, `total_trades`.
-Other metrics are optional but encouraged.
+Required metrics: `ic_mean`, `icir`.
+Other metrics are optional but strongly encouraged.
 
 ## Rules
-1. If a package is missing, install it with `bash` (e.g. `pip install backtrader`)
+1. If a package is missing, install it with `bash` (e.g. `pip install scipy`)
 2. If a script fails, read the error, fix the code, and retry
-3. Prefer simple vectorized pandas approaches over complex frameworks
+3. Prefer simple vectorized pandas/numpy approaches
 4. You MUST call `submit_result` when done — the experiment does not end otherwise
 5. Write clean, readable code with comments
 6. Save intermediate results to files if needed for debugging
 7. Do NOT try to access the internet or fetch external data — use only the provided CSV files
+8. Factor values should be computed CROSS-SECTIONALLY (for each date, compute factor values across all symbols)
 
 {agent_memory}
 """
@@ -103,7 +121,7 @@ def build_task_prompt(
 ) -> str:
     """构建 task prompt，注入 plan.md 内容作为上下文。"""
     return f"""\
-## Task: Implement and evaluate a quantitative trading strategy
+## Task: Implement and evaluate a quantitative factor
 
 ### Hypothesis
 {hypothesis}
@@ -113,7 +131,7 @@ def build_task_prompt(
 
 ### Experiment Plan
 The following is the experiment plan (plan.md) with an implementation checklist.
-Follow each step in the checklist to complete the experiment.
+Follow each step in the checklist to complete the factor evaluation.
 
 ```markdown
 {plan_md}
@@ -128,10 +146,14 @@ Follow each step in the checklist to complete the experiment.
 ### Instructions
 1. First, read the data manifest to understand what data is available
 2. Follow the Implementation Checklist steps in order
-3. Write a complete strategy implementation in a Python script
+3. Write a factor computation script that:
+   - Loads price data and builds a price matrix
+   - Computes cross-sectional factor values for each date
+   - Calls evaluate_factor() with the factor values and price data
+   - Prints the evaluation metrics
 4. Run the script and verify it produces valid results
 5. If there are errors, debug and fix them
-6. Submit the final results using submit_result
+6. Submit the final metrics using submit_result
 
 Begin by reading the data manifest and planning your approach.
 """

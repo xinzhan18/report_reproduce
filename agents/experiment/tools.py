@@ -52,7 +52,7 @@ WRITE_FILE_SCHEMA = {
         "properties": {
             "path": {
                 "type": "string",
-                "description": "Relative file path within the sandbox (e.g. 'strategy.py', 'src/utils.py')",
+                "description": "Relative file path within the sandbox (e.g. 'factor_code.py', 'src/utils.py')",
             },
             "content": {
                 "type": "string",
@@ -108,7 +108,7 @@ RUN_PYTHON_SCHEMA = {
         "properties": {
             "script_path": {
                 "type": "string",
-                "description": "Relative path to the Python script to run (e.g. 'strategy.py')",
+                "description": "Relative path to the Python script to run (e.g. 'factor_code.py')",
             }
         },
         "required": ["script_path"],
@@ -118,7 +118,7 @@ RUN_PYTHON_SCHEMA = {
 SUBMIT_RESULT_SCHEMA = {
     "name": "submit_result",
     "description": (
-        "Submit the final experiment results and end the experiment loop. "
+        "Submit the final factor evaluation results and end the experiment loop. "
         "Call this ONLY when you have valid results to report. "
         "This terminates the agentic loop."
     ),
@@ -131,11 +131,11 @@ SUBMIT_RESULT_SCHEMA = {
                 "properties": {
                     "metrics": {
                         "type": "object",
-                        "description": "Dict of metric name -> value. Required keys: total_return, sharpe_ratio, max_drawdown, total_trades",
+                        "description": "Dict of metric name -> value. Required keys: ic_mean, icir. Recommended: rank_ic_mean, rank_icir, turnover_mean, long_short_return, top_group_return, bottom_group_return, monotonicity_score, factor_coverage",
                     },
                     "description": {
                         "type": "string",
-                        "description": "Brief description of the strategy and its results",
+                        "description": "Brief description of the factor and its evaluation results",
                     },
                 },
                 "required": ["metrics", "description"],

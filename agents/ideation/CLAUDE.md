@@ -38,6 +38,7 @@ _execute(state)
 
 ## 更新历史
 
+- 2026-03-02: 因子研究改造：prompt 重写为因子文献搜索+因子构造逻辑提取，_build_ideation_markdown 更新措辞
 - 2026-03-01: Markdown 驱动：输出统一 ideation.md，_on_submit_result 只写 hypothesis，移除散落文件
 - 2026-03-01: 通用工具提取到 common_tools.py (browse_webpage, google_search, search_knowledge_graph)
 - 2026-03-01: 创建子包，从 ideation_agent.py 重构为 Agentic Tool-Use 引擎

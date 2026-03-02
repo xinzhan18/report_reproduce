@@ -35,7 +35,7 @@ SUBMIT_RESULT_SCHEMA = {
                 "properties": {
                     "experiment_plan": {
                         "type": "object",
-                        "description": "ExperimentPlan with objective, methodology, data_requirements, implementation_steps, success_criteria, risk_factors, estimated_runtime",
+                        "description": "FactorPlan with objective, factor_description, factor_formula, data_requirements, implementation_steps, test_universe, test_period, rebalance_frequency, success_criteria, risk_factors, estimated_runtime",
                     },
                     "methodology": {
                         "type": "string",
@@ -47,7 +47,7 @@ SUBMIT_RESULT_SCHEMA = {
                     },
                     "data_config": {
                         "type": "object",
-                        "description": "Data configuration with symbols, start_date, end_date, interval, market",
+                        "description": "Data configuration with market, universe, start_date, end_date",
                     },
                 },
                 "required": ["experiment_plan", "methodology", "expected_outcomes", "data_config"],

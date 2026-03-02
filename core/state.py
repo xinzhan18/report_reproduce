@@ -4,13 +4,15 @@ State management for the research automation system.
 Defines the ResearchState TypedDict that flows through the entire pipeline.
 Markdown-driven architecture: Agents exchange context via .md files, State holds
 only routing signals and minimal shared data.
+
+量化因子研究系统：FactorPlan + FactorResults 替代原有 ExperimentPlan + BacktestResults。
 """
 
 # ============================================================================
 # 文件头注释 (File Header)
 # INPUT:  外部依赖 - typing (TypedDict, List, Dict类型系统), dataclasses (数据类),
 #                   datetime (时间戳)
-# OUTPUT: 对外提供 - ResearchState, PaperMetadata, ExperimentPlan, BacktestResults,
+# OUTPUT: 对外提供 - ResearchState, PaperMetadata, FactorPlan, FactorResults,
 #                   ExperimentFeedback, RankedPaper, StructuredInsights, DeepInsights,
 #                   ResearchGap, Hypothesis, ResearchSynthesis等状态类型定义
 # POSITION: 系统地位 - Core/State (核心层-状态定义)
@@ -37,30 +39,34 @@ class PaperMetadata(TypedDict):
     pdf_url: Optional[str]
 
 
-class ExperimentPlan(TypedDict):
-    """Structure for experiment plan."""
+class FactorPlan(TypedDict):
+    """Structure for factor research plan."""
     objective: str
-    methodology: str
+    factor_description: str       # 因子衡量什么
+    factor_formula: str           # 公式或伪代码
     data_requirements: List[str]
     implementation_steps: List[str]
-    success_criteria: Dict[str, float]
-    estimated_runtime: str
+    test_universe: str            # "a_shares" | "crypto"
+    test_period: str              # "2018-01-01 to 2024-12-31"
+    rebalance_frequency: str      # "daily" | "weekly" | "monthly"
+    success_criteria: Dict[str, float]  # {"ic_mean": 0.03, "icir": 0.5}
     risk_factors: List[str]
+    estimated_runtime: str
 
 
-class BacktestResults(TypedDict):
-    """Structure for backtest results."""
-    total_return: float
-    cagr: float
-    sharpe_ratio: float
-    sortino_ratio: float
-    max_drawdown: float
-    calmar_ratio: float
-    win_rate: float
-    profit_factor: float
-    total_trades: int
-    avg_trade_duration: float
-    volatility: float
+class FactorResults(TypedDict):
+    """Structure for factor evaluation results."""
+    ic_mean: float              # Mean IC
+    ic_std: float               # IC 标准差
+    icir: float                 # IC / IC_std
+    rank_ic_mean: float         # Mean Rank IC
+    rank_icir: float            # Rank ICIR
+    turnover_mean: float        # 平均换手率
+    long_short_return: float    # 多空年化收益
+    top_group_return: float     # 顶层分组年化收益
+    bottom_group_return: float  # 底层分组年化收益
+    monotonicity_score: float   # 分层单调性 (0-1)
+    factor_coverage: float      # 因子覆盖率
 
 
 class ExperimentFeedback(TypedDict):
@@ -202,11 +208,11 @@ class ResearchState(TypedDict):
     hypothesis: str                  # Concrete, testable research question (full text in ideation.md)
 
     # ============= Planning Agent Outputs =============
-    experiment_plan: ExperimentPlan  # Structured plan data (also in plan.md)
+    experiment_plan: FactorPlan     # Structured factor plan data (also in plan.md)
     methodology: str                 # Detailed methodology description
 
     # ============= Experiment Agent Outputs =============
-    results_data: BacktestResults    # Performance metrics
+    results_data: FactorResults     # Factor evaluation metrics
     validation_status: Literal["success", "partial", "failed"]
     error_messages: Optional[str]    # Error details if validation failed
     experiment_feedback: Optional[ExperimentFeedback]  # Feedback loop for routing
@@ -258,30 +264,34 @@ def create_initial_state(
         hypothesis="",
 
         # Planning outputs
-        experiment_plan=ExperimentPlan(
+        experiment_plan=FactorPlan(
             objective="",
-            methodology="",
+            factor_description="",
+            factor_formula="",
             data_requirements=[],
             implementation_steps=[],
+            test_universe="a_shares",
+            test_period="",
+            rebalance_frequency="daily",
             success_criteria={},
+            risk_factors=[],
             estimated_runtime="",
-            risk_factors=[]
         ),
         methodology="",
 
         # Experiment outputs
-        results_data=BacktestResults(
-            total_return=0.0,
-            cagr=0.0,
-            sharpe_ratio=0.0,
-            sortino_ratio=0.0,
-            max_drawdown=0.0,
-            calmar_ratio=0.0,
-            win_rate=0.0,
-            profit_factor=0.0,
-            total_trades=0,
-            avg_trade_duration=0.0,
-            volatility=0.0
+        results_data=FactorResults(
+            ic_mean=0.0,
+            ic_std=0.0,
+            icir=0.0,
+            rank_ic_mean=0.0,
+            rank_icir=0.0,
+            turnover_mean=0.0,
+            long_short_return=0.0,
+            top_group_return=0.0,
+            bottom_group_return=0.0,
+            monotonicity_score=0.0,
+            factor_coverage=0.0,
         ),
         validation_status="success",
         error_messages=None,

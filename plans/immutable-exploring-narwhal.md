@@ -1,358 +1,240 @@
-# Pipeline 架构升级：Markdown 驱动 + Checklist 反馈回路
+# 量化因子研究 Pipeline 改造方案
 
 ## Context
 
-当前 4 个 Agent 的数据交换是 ResearchState（内存） + 散落的 JSON/MD 文件双写。
-用户期望的架构：**每个 Agent 维护一个核心 Markdown 文档**，下游 Agent 直接读取上游 Markdown 获取上下文。
-PlanningAgent 输出的 plan.md 包含 **checklist**，ExperimentAgent 执行后**回写 plan.md 标记完成/失败状态**。
-如果有未完成的 step，pipeline 路由回 PlanningAgent 读取标记后的 plan.md 修正方案。
+当前 FARS 系统面向**交易策略研究**（momentum/mean-reversion → backtest → Sharpe/MaxDD）。
+用户需要将其转型为**量化因子研究**系统：从论文中提取因子构造逻辑 → 实现因子计算代码 → 调用因子评估框架验证。
 
----
-
-## 核心 Markdown 文档流转
-
-```
-IdeationAgent                PlanningAgent              ExperimentAgent           WritingAgent
-     │                            │                          │                        │
-     ▼                            ▼                          ▼                        ▼
- ideation.md ──────────────► plan.md ──────────────────► plan.md (回写更新)      report.md
- (文献综述+假设)           (方案+checklist)              + experiment.md
-                                                         (结果+指标)
-                                  ▲                          │
-                                  │   未完成 step? 回退      │
-                                  └──────────────────────────┘
-```
-
-### 各 Agent 的 Markdown 规范
-
-**ideation.md** (`literature/ideation.md`)
-```markdown
-# Literature Review: {research_direction}
-
-## Papers Reviewed
-| # | Title | Authors | Key Findings | Relevance |
-|---|-------|---------|-------------|-----------|
-| 1 | ... | ... | ... | 0.9 |
-
-## Key Methodologies
-- ...
-
-## Research Gaps
-1. Gap description...
-2. ...
-
-## Hypothesis
-**Statement**: ...
-**Rationale**: ...
-**Supporting Evidence**: ...
-```
-
-**plan.md** (`experiments/plan.md`) — **带 checklist**
-```markdown
-# Experiment Plan
-
-## Objective
-{clear testing statement}
-
-## Methodology
-{detailed 300-500 words}
-
-## Data Configuration
-- Symbols: SPY
-- Date Range: 2015-01-01 to present
-- Interval: 1d
-- Market: us_equity
-
-## Implementation Checklist
-- [ ] Step 1: Download and prepare OHLCV data
-- [ ] Step 2: Implement momentum signal (20-day lookback, ref: Paper X)
-- [ ] Step 3: Design entry/exit rules
-- [ ] Step 4: Add position sizing and risk management
-- [ ] Step 5: Run backtest
-- [ ] Step 6: Calculate metrics
-- [ ] Step 7: Validate against success criteria
-
-## Success Criteria
-- Sharpe Ratio > 1.0
-- Max Drawdown < 30%
-- Total Trades >= 20
-
-## Risk Factors
-- ...
-```
-
-**plan.md (ExperimentAgent 回写后)**
-```markdown
-## Implementation Checklist
-- [x] Step 1: Download and prepare OHLCV data
-- [x] Step 2: Implement momentum signal
-- [x] Step 3: Design entry/exit rules
-- [x] Step 4: Add position sizing and risk management
-- [x] Step 5: Run backtest
-- [x] Step 6: Calculate metrics
-- [ ] Step 7: Validate against success criteria — FAILED: Sharpe=0.4 < 1.0, MaxDD=35% > 30%
-
-## Execution Results
-| Metric | Value | Target | Status |
-|--------|-------|--------|--------|
-| Sharpe Ratio | 0.40 | > 1.0 | FAIL |
-| Max Drawdown | 35.0% | < 30% | FAIL |
-| Total Trades | 45 | >= 20 | PASS |
-| Total Return | 15.2% | - | - |
-```
-
-**experiment.md** (`experiments/experiment.md`)
-```markdown
-# Experiment Results
-
-## Strategy Code
-​```python
-# ... strategy.py content ...
-​```
-
-## Performance Summary
-{metrics table}
-
-## Analysis
-{LLM verdict and analysis}
-```
-
-**report.md** (`reports/report.md`) — WritingAgent 最终报告
+**核心简化点**：
+- 场景聚焦：量化因子挖掘（A股 + 加密货币）
+- 评估框架：用户提供 Python 库函数（类似 alphalens），ExperimentAgent 在 sandbox 中调用
+- 数据来源：本地量价数据（格式待定，需设计接口）
+- 保持 4 Agent 架构（Ideation → Planning → Experiment → Writing）
 
 ---
 
 ## 修改文件清单
 
-### Step 1: `core/state.py` — 精简 + ExperimentFeedback
+### 新建 (1 文件)
+| 文件 | 用途 |
+|------|------|
+| `market_data/local_data_loader.py` | 本地面板数据加载器（替代远程 DataFetcher） |
 
-**新增 ExperimentFeedback**:
-```python
-class ExperimentFeedback(TypedDict):
-    verdict: str        # "success" | "partial" | "revise_plan" | "failed"
-    analysis: str
-    suggestions: list
-    failed_steps: list  # plan.md 中未完成的 step 描述
-```
+### 删除 (5 文件)
+| 文件 | 原因 |
+|------|------|
+| `market_data/yfinance_source.py` | 远程数据获取，不再需要 |
+| `market_data/akshare_source.py` | 远程数据获取，不再需要 |
+| `market_data/ccxt_source.py` | 远程数据获取，不再需要 |
+| `market_data/fetcher.py` | 被 LocalDataLoader 替代 |
+| `market_data/base.py` | DataSource ABC 不再需要 |
 
-**ResearchState 精简** — 移除文件系统中已有的冗余字段：
+### 修改 (15 文件)
+| # | 文件 | 改动 |
+|---|------|------|
+| 1 | `core/state.py` | `ExperimentPlan`→`FactorPlan`, `BacktestResults`→`FactorResults` |
+| 2 | `core/pipeline.py` | `DataFetcher`→`LocalDataLoader`, 更新 main() 输出 |
+| 3 | `config/agent_config.py` | keywords 改为因子相关, validation_metrics 改为 IC/ICIR |
+| 4 | `market_data/__init__.py` | 导出 `LocalDataLoader` |
+| 5 | `agents/experiment/metrics.py` | `compute_metrics`→`evaluate_factor`（因子评估函数） |
+| 6 | `agents/experiment/sandbox.py` | `inject_data` 支持面板数据, `inject_helpers` 注入 evaluate_factor |
+| 7 | `agents/experiment/agent.py` | 全面替换：BacktestResults→FactorResults, 指标/分析/回写逻辑 |
+| 8 | `agents/experiment/prompts.py` | 完整重写：因子计算+评估 workflow |
+| 9 | `agents/experiment/tools.py` | submit_result schema 改为因子指标 |
+| 10 | `agents/ideation/prompts.py` | 完整重写：因子构造逻辑提取 |
+| 11 | `agents/ideation/agent.py` | `_build_ideation_markdown` 措辞微调 |
+| 12 | `agents/planning/prompts.py` | 完整重写：因子测试方案设计 |
+| 13 | `agents/planning/agent.py` | `_on_submit_result` 映射到 FactorPlan, `_build_plan_markdown` 更新 |
+| 14 | `agents/writing/prompts.py` | 完整重写：因子研究报告格式 |
+| 15 | `agents/writing/agent.py` | `_build_state_summary` 改为因子指标 |
 
-移除: `papers_reviewed`, `literature_summary`, `research_gaps`, `experiment_code`, `execution_logs`, `report_draft`, `final_report`, `report_path`, `expected_outcomes`, `resource_requirements`
+---
 
-保留:
-```python
-class ResearchState(TypedDict):
-    research_direction: str
-    project_id: str
-    hypothesis: str                           # Ideation 唯一写入 state 的字段
-    experiment_plan: ExperimentPlan            # Planning → Experiment
-    methodology: str                          # Planning → Experiment
-    results_data: BacktestResults             # Experiment → Writing/路由
-    validation_status: Literal[...]           # 路由信号
-    error_messages: Optional[str]
-    experiment_feedback: Optional[ExperimentFeedback]  # 新增：反馈回路
-    iteration: int
-    timestamp: str
-    status: str
-    error_log: Optional[str]
-    requires_human_review: bool
-    review_notes: Optional[str]
-```
+## 核心设计
 
-更新 `create_initial_state()` 匹配。
-
-### Step 2: `core/pipeline.py` — 反馈回路
-
-**替换 `should_retry_experiment`**:
-```python
-def should_continue_after_experiment(state: ResearchState) -> str:
-    feedback = state.get("experiment_feedback")
-    if not feedback:
-        return "failed"
-    verdict = feedback.get("verdict", "failed")
-    if verdict == "success":
-        return "writing"
-    elif verdict == "partial":
-        return "writing"
-    elif verdict == "revise_plan" and state.get("iteration", 0) < 2:
-        return "planning"
-    else:
-        return "failed"
-```
-
-**添加 experiment → planning 边**:
-```python
-workflow.add_conditional_edges("experiment", should_continue_after_experiment, {
-    "writing": "writing",
-    "planning": "planning",
-    "failed": "failed",
-})
-```
-
-### Step 3: `agents/ideation/agent.py` — 输出 ideation.md
-
-**`_execute()` 修改**：用 `save_artifact` 保存统一的 `ideation.md`（替代现有的 5 个散落文件）。
-
-保留 `research_synthesis.json` 作为辅助结构化数据（知识图谱需要）。
+### 1. 数据类型 (`core/state.py`)
 
 ```python
-# 构建统一的 ideation.md
-ideation_md = self._build_ideation_markdown(submitted_results)
-self.save_artifact(ideation_md, project_id, "ideation.md", "literature")
+class FactorPlan(TypedDict):
+    objective: str
+    factor_description: str       # 因子衡量什么
+    factor_formula: str           # 公式或伪代码
+    data_requirements: List[str]
+    implementation_steps: List[str]
+    test_universe: str            # "a_shares" | "crypto"
+    test_period: str              # "2018-01-01 to 2024-12-31"
+    rebalance_frequency: str      # "daily" | "weekly" | "monthly"
+    success_criteria: Dict[str, float]  # {"ic_mean": 0.03, "icir": 0.5}
+    risk_factors: List[str]
+    estimated_runtime: str
 
-# 保留 JSON 辅助文件（知识图谱、工具读取兼容）
-self.save_artifact({"papers": papers}, project_id, "papers_analyzed.json", "literature")
+class FactorResults(TypedDict):
+    ic_mean: float              # Mean IC
+    ic_std: float               # IC 标准差
+    icir: float                 # IC / IC_std
+    rank_ic_mean: float         # Mean Rank IC
+    rank_icir: float            # Rank ICIR
+    turnover_mean: float        # 平均换手率
+    long_short_return: float    # 多空年化收益
+    top_group_return: float     # 顶层分组年化收益
+    bottom_group_return: float  # 底层分组年化收益
+    monotonicity_score: float   # 分层单调性 (0-1)
+    factor_coverage: float      # 因子覆盖率
 ```
 
-**新增 `_build_ideation_markdown()`** — 将 papers、gaps、hypothesis 格式化为一个完整的 Markdown 文档。
+ResearchState: `experiment_plan: FactorPlan`, `results_data: FactorResults`。其余不变。
 
-**`_on_submit_result()`** — 只写 `state["hypothesis"]`（其余全在 ideation.md 中）。
+### 2. 本地数据加载 (`market_data/local_data_loader.py`)
 
-### Step 4: `agents/planning/agent.py` + `prompts.py` — 输出 plan.md + 修正模式
-
-**a) `_execute()` 修改**：
-- 保存 `plan.md`（带 checklist）替代 `planning_document.md`
-- 保留 `data_config.json`（ExperimentAgent 的 DataFetcher 需要结构化配置）
-- 删除 `experiment_plan.json` 的保存（plan.md 中已包含所有信息）
-
-**b) `_build_task_prompt()` 双模式**：
 ```python
-def _build_task_prompt(self, state):
-    feedback = state.get("experiment_feedback")
-    if feedback and feedback.get("verdict") == "revise_plan":
-        # 修正模式：读取被 ExperimentAgent 标记过的 plan.md
-        marked_plan = self.file_manager.load_text(
-            state["project_id"], "plan.md", subdir="experiments"
-        )
-        return build_revision_task_prompt(
-            hypothesis=state["hypothesis"],
-            marked_plan=marked_plan,
-            feedback=feedback,
-            kg_context=self._build_kg_context(state["hypothesis"]),
-        )
-    else:
-        # 首次模式：读取 ideation.md
-        return build_task_prompt(...)
+class LocalDataLoader:
+    """本地面板数据加载器。
+
+    目录结构:
+        data/market/a_shares/000001.SZ.csv
+        data/market/a_shares/000002.SZ.csv
+        data/market/crypto/BTCUSDT.csv
+
+    CSV 格式: date,open,high,low,close,volume (DatetimeIndex)
+    """
+    def __init__(self, data_dir: str = "data/market"):
+        ...
+
+    def load(self, data_config: dict) -> dict[str, pd.DataFrame]:
+        """根据 data_config 加载数据。
+
+        data_config: {
+            "market": "a_shares" | "crypto",
+            "universe": "all" | ["000001.SZ", ...],
+            "start_date": "2018-01-01",  # optional
+            "end_date": "2024-12-31",    # optional
+        }
+        Returns: {symbol: DataFrame(date, OHLCV)}
+        """
 ```
 
-**c) `prompts.py` 新增 `build_revision_task_prompt()`**：
-- 注入被标记的 plan.md（可以看到哪些 `[x]` 哪些 `[ ]`）
-- 注入 feedback.analysis 和 suggestions
-- 指示 LLM 针对失败 step 修正方案
+### 3. 因子评估函数 (`agents/experiment/metrics.py`)
 
-**d) submit_result 格式调整**：要求 LLM 返回的 plan 包含 checklist 格式的 implementation_steps
+替换 `compute_metrics` 为 `evaluate_factor`：
 
-**e) `_on_submit_result()` 后新增**：从 submit_result 的 plan 数据构建 plan.md 并保存
-
-### Step 5: `agents/experiment/agent.py` — 读取 plan.md + 回写 checklist
-
-**a) `_build_task_prompt()` 修改**：
-- 读取 `plan.md` 而非从 state 提取 implementation_steps
-- prompt 中指示 LLM：每完成一个 step 要报告进度
-
-**b) `_execute()` 末尾新增 plan.md 回写逻辑**：
 ```python
-# 读取 plan.md
-plan_md = self.file_manager.load_text(project_id, "plan.md", subdir="experiments")
+def evaluate_factor(
+    factor_values: pd.DataFrame,  # index=date, columns=symbols
+    price_data: pd.DataFrame,     # index=date, columns=symbols (close)
+    n_groups: int = 5,
+    holding_period: int = 1,
+) -> dict:
+    """因子评估接口。返回 ic_mean/icir/rank_ic_mean/... 等指标。
 
-# 根据 metrics 和 success_criteria 更新 checklist
-updated_plan = self._update_plan_checklist(plan_md, metrics, success_criteria)
-
-# 回写 plan.md
-self.save_artifact(updated_plan, project_id, "plan.md", "experiments")
+    用户后续可替换函数体为自己的评估库。接口签名和返回 key 保持不变。
+    """
 ```
 
-**c) 新增 `_update_plan_checklist()`** — 解析 plan.md 中的 `- [ ]` 行，根据执行结果标记为 `[x]` 或 `[ ] — FAILED: reason`，并追加 `## Execution Results` 表格。
+提供一个基础的 IC 计算占位实现，用户后续替换为自己的评估库。
 
-**d) 新增 `_build_experiment_markdown()`** — 构建 experiment.md（代码 + 指标 + 分析）。
+### 4. Sandbox 改造 (`agents/experiment/sandbox.py`)
 
-**e) 修改结果评估逻辑**：
-- `_analyze_results()` 的 verdict 枚举新增 `"revise_plan"`
-- 将 feedback 写入 `state["experiment_feedback"]`
-- 移除 `state["iteration"] = max_retries` hack
-- 改为 `state["iteration"] = state.get("iteration", 0) + 1`
+**`inject_data`**：写入 per-symbol CSV + `data/panel.csv`（stacked format，含 symbol 列）+ manifest（含 total_symbols、columns）
 
-**f) 移除对已删除 state 字段的写入**（`execution_logs`, `experiment_code`）
+**`inject_helpers`**：注入 `evaluate_factor.py`（替代 `compute_metrics.py`）
 
-### Step 6: `agents/writing/agent.py` — 读取上游 Markdown
+### 5. ExperimentAgent 关键改动
 
-**`_build_state_summary()` 精简**：移除对 `papers_reviewed`、`research_gaps` 等已删字段的引用。WritingAgent 在 agentic loop 中通过 `read_upstream_file` 直接读取 `ideation.md`、`plan.md`、`experiment.md`。
+- `data_fetcher` → `data_loader` (LocalDataLoader)
+- 必需指标：`["ic_mean", "icir"]`（替代 sharpe/drawdown/trades）
+- `_map_to_backtest_results` → `_map_to_factor_results`
+- `_analyze_results` prompt：评估因子质量（IC 水平、ICIR、单调性、换手率）
+- verdict: "success"（IC/ICIR 达标）/ "revise_plan"（有改进方向）/ "accept_partial"
+- `_check_success_criteria`：ic_mean >= threshold, icir >= threshold, turnover_mean <= threshold
+- 产出文件名：`strategy.py` → `factor_code.py`, `backtest_results.json` → `factor_results.json`
+- `_collect_code_from_sandbox`：排除 `evaluate_factor.py`（替代排除 `compute_metrics.py`）
 
-**`_on_submit_result()`** — 不再写 `state["report_draft"]` / `state["final_report"]`，仅保存到文件。
+### 6. Prompt 全面重写（4 个 Agent）
 
-### Step 7: `agents/planning/prompts.py` — prompt 调整
+**IdeationAgent prompt**：
+- 搜索方向：quantitative factors, alpha factors, cross-sectional predictors, factor zoo, anomalies
+- 输出：因子构造逻辑、经济学直觉、适用市场
+- hypothesis 格式：因子预测能力假设
 
-**System prompt** 中 Workflow 步骤调整：
-- Step 1: 读取 `literature/ideation.md`（替代原来的 3 个文件）
-- Step 5: submit_result 格式中 `implementation_steps` 要求带序号，方便生成 checklist
+**PlanningAgent prompt**：
+- 读取 `literature/ideation.md` 中的因子假设
+- 设计：因子公式、测试 universe、测试期间、再平衡频率
+- success_criteria：IC/ICIR 阈值
+- submit_result 格式新增 `factor_description`, `factor_formula`, `test_universe`, `test_period`, `rebalance_frequency`
 
-**submit_result 格式**中明确 checklist 要求：
-```json
-{
-  "implementation_steps": [
-    "Step 1: Specific actionable step (reference Paper X)",
-    "Step 2: ...",
+**ExperimentAgent prompt**：
+- workspace 中有 `evaluate_factor.py` 和 `data/panel.csv`
+- 任务：加载数据 → 计算截面因子值 → 调用 evaluate_factor → 提交结果
+- 数据加载 pattern：读 manifest → 构建 price_data matrix → 计算因子
+
+**WritingAgent prompt**：
+- 报告结构：Abstract → Introduction → Literature Review → Factor Construction → Evaluation Results → Discussion → Conclusion
+- 上游文件：`ideation.md`, `plan.md`, `experiment.md`, `factor_results.json`, `factor_code.py`
+
+### 7. Agent Config 更新 (`config/agent_config.py`)
+
+```python
+"ideation": {
+    "keywords": [
+        "quantitative factors", "alpha factors", "cross-sectional predictors",
+        "factor investing", "anomalies", "factor zoo",
+        "momentum factor", "value factor", "quality factor",
+        "high-frequency factors", "machine learning factors",
+        "cryptocurrency factors", "A-share factors",
+    ],
     ...
-  ]
+}
+
+"experiment": {
+    "validation_metrics": {
+        "min_ic_mean": 0.02,
+        "min_icir": 0.3,
+        "max_turnover": 0.8,
+        "min_coverage": 0.5,
+    },
+    ...
 }
 ```
 
-PlanningAgent 在 `_execute()` 中将 steps 转换为 Markdown checklist 格式写入 plan.md。
-
-### Step 8: 文档更新
-
-| 文件 | 更新内容 |
-|------|---------|
-| `core/state.py` 文件头 | OUTPUT 新增 ExperimentFeedback；说明 State 精简 |
-| `core/pipeline.py` 文件头 | 路由函数改为 should_continue_after_experiment |
-| `core/CLAUDE.md` | state.py / pipeline.py 更新说明 |
-| `agents/ideation/agent.py` 文件头 | 输出改为 ideation.md |
-| `agents/ideation/CLAUDE.md` | 更新产出文件说明 |
-| `agents/planning/agent.py` 文件头 | 输出改为 plan.md；新增修正模式 |
-| `agents/planning/prompts.py` 文件头 | 新增 build_revision_task_prompt |
-| `agents/planning/CLAUDE.md` | 更新：plan.md checklist + 修正模式 |
-| `agents/experiment/agent.py` 文件头 | 新增 plan.md 回写 + experiment.md |
-| `agents/experiment/CLAUDE.md` | 更新：checklist 回写 + feedback |
-| `agents/writing/agent.py` 文件头 | 适配 state 精简 |
-| `agents/writing/CLAUDE.md` | 更新 |
-| `agents/CLAUDE.md` | 架构说明更新 |
-| 根 `CLAUDE.md` | 数据流向图更新为 Markdown 流转 |
-
 ---
 
-## 实施顺序与依赖
+## 实施顺序
 
 ```
-Step 1 (state.py)     ← 无依赖，先做
-Step 2 (pipeline.py)  ← 依赖 Step 1 (ExperimentFeedback)
-Step 3 (ideation)     ← 依赖 Step 1 (state 字段变化)
-Step 4 (planning)     ← 依赖 Step 1
-Step 5 (experiment)   ← 依赖 Step 1, Step 4 (plan.md 格式)
-Step 6 (writing)      ← 依赖 Step 1
-Step 7 (prompts)      ← 与 Step 4 一起做
-Step 8 (文档)         ← 最后做
+Phase 1: 基础设施（无 Agent 依赖）
+  [x] 1. core/state.py          → FactorPlan + FactorResults
+  [x] 2. market_data/            → 删除 5 文件 + 新建 LocalDataLoader + 更新 __init__
+  [x] 3. agents/experiment/metrics.py → evaluate_factor
+  [x] 4. config/agent_config.py  → 因子关键词 + 因子验证阈值
+
+Phase 2: ExperimentAgent（最复杂）
+  [x] 5. agents/experiment/sandbox.py  → 面板数据注入 + evaluate_factor 注入
+  [x] 6. agents/experiment/prompts.py  → 完整重写
+  [x] 7. agents/experiment/tools.py    → submit_result schema
+  [x] 8. agents/experiment/agent.py    → 全面替换
+
+Phase 3: Pipeline + 上游 Agent
+  [x] 9. core/pipeline.py              → DataFetcher → LocalDataLoader
+  [x] 10. agents/ideation/prompts.py   → 因子研究 prompt
+  [x] 11. agents/ideation/agent.py     → 微调
+  [x] 12. agents/planning/prompts.py   → 因子规划 prompt
+  [x] 13. agents/planning/agent.py     → FactorPlan 映射
+
+Phase 4: Writing + 文档
+  [x] 14. agents/writing/prompts.py    → 因子报告 prompt
+  [x] 15. agents/writing/agent.py      → 因子指标摘要
+  [x] 16. 文档更新（所有 CLAUDE.md + 文件头）
+  [x] 17. AST 语法验证通过（18 文件）
 ```
-
-建议顺序：**1 → 2 → 3 → 4+7 → 5 → 6 → 8**
-
----
-
-## 关键设计决策
-
-1. **Markdown 是主要协作界面** — Agent 间通过读取上游 .md 文件获取上下文，不依赖 state 传递大块数据
-2. **plan.md checklist 是进度追踪** — `- [ ]` / `- [x]` / `- [ ] — FAILED` 直接在文件中体现
-3. **ExperimentAgent 回写 plan.md** — 在 `_execute()` 末尾编程式更新，不在 agentic loop 中
-4. **data_config.json 保留** — DataFetcher 需要结构化配置，无法纯 Markdown 化
-5. **确定性路由** — checklist 失败 → `state["experiment_feedback"]["verdict"] = "revise_plan"` → 回到 planning
-6. **最多 2 次反馈** — `iteration < 2` 硬限制
 
 ---
 
 ## 验证
 
-1. **AST 语法检查**: 所有修改文件 `ast.parse()` 通过
-2. **State 兼容**: `create_initial_state()` 不含已删除字段
-3. **路由测试**: feedback.verdict="revise_plan" + iteration=0 → 路由到 "planning"
-4. **Markdown 产出**: 运行 IdeationAgent 后 `outputs/{pid}/literature/ideation.md` 存在
-5. **Checklist 回写**: 运行 ExperimentAgent 后 `plan.md` 中有 `[x]` 标记
-6. **修正模式**: PlanningAgent 二次调用时 prompt 包含 "Revise" 和被标记的 plan.md
-7. **反馈边界**: iteration=2 时路由到 "failed"
+1. **AST 语法检查**：所有修改 .py 文件 `ast.parse()` 通过
+2. **类型兼容**：`create_initial_state()` 正确初始化 FactorPlan/FactorResults
+3. **数据加载**：创建 2 个 symbol 测试数据 → LocalDataLoader.load() 返回正确 dict
+4. **Sandbox 注入**：验证 sandbox 中存在 `evaluate_factor.py` + `data/panel.csv` + per-symbol CSV
+5. **评估函数**：用随机数据调用 `evaluate_factor()` → 返回包含所有必需 key 的 dict
+6. **Pipeline 路由**：feedback.verdict="revise_plan" + iteration=0 → 路由到 "planning"
+7. **端到端**：用测试数据跑完整 pipeline，验证各 .md 文件产出和因子指标

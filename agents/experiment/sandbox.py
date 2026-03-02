@@ -2,10 +2,11 @@
 SandboxManager — 实验代码的隔离执行环境
 
 提供工作目录隔离、文件读写、进程执行、安全限制。
+面板数据注入 + evaluate_factor 注入（因子研究模式）。
 """
 
 # INPUT:  pathlib, subprocess, json, shutil, logging, inspect,
-#         agents.experiment.metrics (compute_metrics 源码注入)
+#         agents.experiment.metrics (evaluate_factor 源码注入)
 # OUTPUT: SandboxManager 类
 # POSITION: agents/experiment 子包 - 沙箱管理器
 
@@ -18,7 +19,7 @@ import subprocess
 import inspect
 from pathlib import Path
 
-from agents.experiment.metrics import compute_metrics
+from agents.experiment.metrics import evaluate_factor
 
 logger = logging.getLogger("agents.experiment.sandbox")
 
@@ -53,28 +54,71 @@ class SandboxManager:
         return self.workdir
 
     def inject_data(self, data_dict: dict) -> None:
-        """将 DataFrame dict 写入 sandbox/data/ 为 CSV + manifest。"""
+        """将 DataFrame dict 写入 sandbox/data/ 为 per-symbol CSV + panel.csv + manifest。
+
+        写入:
+        - data/<symbol>.csv — 每个品种独立 CSV
+        - data/panel.csv — 长格式面板数据 (含 symbol 列)
+        - data_manifest.json — {symbol: csv_path, _meta: {total_symbols, columns}}
+        """
+        import pandas as pd
+
         manifest = {}
+        panel_frames = []
+
         for symbol, df in data_dict.items():
             csv_path = f"data/{symbol}.csv"
             df.to_csv(self.workdir / csv_path)
             manifest[symbol] = csv_path
-        # 写 manifest
+
+            # 构建长格式面板
+            frame = df.copy()
+            frame["symbol"] = symbol
+            panel_frames.append(frame)
+
+        # 写 panel.csv（长格式）
+        if panel_frames:
+            panel = pd.concat(panel_frames)
+            panel.to_csv(self.workdir / "data" / "panel.csv")
+
+        # 写 manifest（含元信息）
+        columns = list(data_dict[next(iter(data_dict))].columns) if data_dict else []
+        manifest["_meta"] = {
+            "total_symbols": len(data_dict),
+            "columns": columns,
+        }
         with open(self.workdir / "data_manifest.json", "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2)
         logger.info(f"Injected {len(data_dict)} datasets into sandbox")
 
     def inject_helpers(self) -> None:
-        """将 compute_metrics 函数源码写入 sandbox。"""
-        source = inspect.getsource(compute_metrics)
-        # 构造一个独立可 import 的 Python 文件
-        helper_code = (
-            "import pandas as pd\nimport numpy as np\n\n"
-            + source
-        )
-        with open(self.workdir / "compute_metrics.py", "w", encoding="utf-8") as f:
+        """将 evaluate_factor 函数源码写入 sandbox。"""
+        # 获取 evaluate_factor 及其私有辅助函数的源码
+        import agents.experiment.metrics as metrics_module
+        source = inspect.getsource(metrics_module)
+        # 移除模块级 docstring 和 header comments，保留 import 和函数
+        lines = source.split("\n")
+        code_lines = []
+        in_docstring = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith('"""') and not in_docstring:
+                in_docstring = True
+                if stripped.count('"""') >= 2:
+                    in_docstring = False
+                continue
+            if in_docstring:
+                if '"""' in stripped:
+                    in_docstring = False
+                continue
+            if stripped.startswith("#") and not code_lines:
+                continue
+            code_lines.append(line)
+
+        helper_code = "\n".join(code_lines)
+        with open(self.workdir / "evaluate_factor.py", "w", encoding="utf-8") as f:
             f.write(helper_code)
-        logger.info("Injected compute_metrics.py into sandbox")
+        logger.info("Injected evaluate_factor.py into sandbox")
 
     def run_command(self, command: str, timeout: int = 300) -> dict:
         """执行 shell 命令，返回 {stdout, stderr, returncode}。"""

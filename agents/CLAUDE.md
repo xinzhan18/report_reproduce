@@ -68,11 +68,11 @@ class MyAgent(BaseAgent):
 - **依赖**: FileManager, KnowledgeGraph, BrowserManager
 
 ### experiment/ (子包)
-- **角色**: 实验智能体 (Agentic Tool-Use 引擎) - 继承BaseAgent
-- **功能**: 自主编写代码、运行实验。执行后回写 plan.md checklist + 构建 experiment.md + 写入 ExperimentFeedback。8 个工具
-- **产出**: `experiments/plan.md` (回写), `experiments/experiment.md`, `experiments/strategy.py`, `experiments/backtest_results.json`
-- **子文件**: agent.py (主类+checklist回写+experiment.md), sandbox.py, tools.py, prompts.py, metrics.py, __init__.py
-- **依赖**: SandboxManager, DataFetcher, BrowserManager
+- **角色**: 因子实验智能体 (Agentic Tool-Use 引擎) - 继承BaseAgent
+- **功能**: 自主编写因子计算代码、调用 evaluate_factor 评估。执行后回写 plan.md checklist + 构建 experiment.md + 写入 ExperimentFeedback。8 个工具
+- **产出**: `experiments/plan.md` (回写), `experiments/experiment.md`, `experiments/factor_code.py`, `experiments/factor_results.json`
+- **子文件**: agent.py (主类+checklist回写+experiment.md), sandbox.py, tools.py, prompts.py, metrics.py (evaluate_factor), __init__.py
+- **依赖**: SandboxManager, LocalDataLoader, BrowserManager
 
 ### writing/ (子包)
 - **角色**: 写作智能体 (Agentic Tool-Use 引擎) - 继承BaseAgent
@@ -95,6 +95,7 @@ IdeationAgent → ideation.md → PlanningAgent → plan.md → ExperimentAgent 
 
 ## 更新历史
 
+- 2026-03-02: 因子研究改造：4 个 Agent prompt 全面重写为因子研究模式；ExperimentAgent 改用 LocalDataLoader + evaluate_factor + FactorResults；PlanningAgent 改用 FactorPlan；WritingAgent 改为因子报告格式
 - 2026-03-01: Markdown 驱动架构升级：ideation.md 统一输出、plan.md checklist + 回写、experiment.md 结果、ExperimentFeedback 反馈回路、State 精简
 - 2026-03-01: BaseAgent 新增 _reflect_and_update_memory()：执行完成后用 haiku LLM 分析日志，自动提取 learnings/mistakes 写入 AgentMemory
 - 2026-03-01: 10 项修复: Sortino 双重年化、BacktestEngine 假指标、PlanningAgent/WritingAgent prompt 修正、state["error"]→error_log、通用工具提取到 common_tools.py、删除死代码/配置、token 跟踪、沙箱安全增强

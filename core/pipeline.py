@@ -11,7 +11,7 @@ and experiment→planning feedback loop driven by ExperimentFeedback.
 #                   core/state (ResearchState, ExperimentFeedback 状态定义),
 #                   agents (四个Agent类),
 #                   tools (PaperFetcher, FileManager, PDFReader),
-#                   market_data (DataFetcher),
+#                   market_data (LocalDataLoader),
 #                   config/llm_config (LLM客户端),
 #                   core/persistence (Checkpointer)
 # OUTPUT: 对外提供 - create_research_pipeline()函数,返回LangGraph编排器,
@@ -32,7 +32,7 @@ from agents.experiment import ExperimentAgent
 from agents.writing import WritingAgent
 from tools.paper_fetcher import PaperFetcher
 from tools.file_manager import FileManager
-from market_data import DataFetcher
+from market_data import LocalDataLoader
 from tools.pdf_reader import PDFReader
 from config.llm_config import get_llm
 from core.persistence import get_checkpointer
@@ -80,13 +80,13 @@ def create_research_pipeline():
     llm = get_llm("sonnet")
     paper_fetcher = PaperFetcher()
     file_manager = FileManager()
-    data_fetcher = DataFetcher()
+    data_loader = LocalDataLoader()
 
     # Initialize agents
     pdf_reader = PDFReader()
     ideation_agent = IdeationAgent(llm, paper_fetcher, file_manager, pdf_reader=pdf_reader)
     planning_agent = PlanningAgent(llm, file_manager)
-    experiment_agent = ExperimentAgent(llm, file_manager, data_fetcher)
+    experiment_agent = ExperimentAgent(llm, file_manager, data_loader)
     writing_agent = WritingAgent(llm, file_manager)
 
     # Create graph
@@ -259,7 +259,9 @@ def main():
     if result["status"] == "completed":
         print(f"\n✓ Research completed successfully!")
         print(f"  Hypothesis: {result['hypothesis'][:100]}...")
-        print(f"  Sharpe Ratio: {result['results_data']['sharpe_ratio']:.2f}")
+        rd = result['results_data']
+        print(f"  IC Mean: {rd['ic_mean']:.4f}, ICIR: {rd['icir']:.4f}")
+        print(f"  Rank IC: {rd['rank_ic_mean']:.4f}, L/S Return: {rd['long_short_return']:.4f}")
     else:
         print(f"\n✗ Research failed: {result.get('error_messages', 'Unknown error')}")
 

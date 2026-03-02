@@ -36,18 +36,19 @@ AGENT_CONFIG: Dict[str, Dict[str, Any]] = {
         "deep_analysis_count": 5,       # 深度分析论文数量上限
         "fallback_to_abstract": True,   # PDF 失败时退化为摘要分析
         "keywords": [
-            "quantitative finance",
-            "algorithmic trading",
-            "portfolio optimization",
-            "risk management",
-            "market microstructure",
-            "high-frequency trading",
-            "factor models",
-            "backtesting",
-            "momentum strategies",
-            "mean reversion",
-            "pairs trading",
-            "statistical arbitrage",
+            "quantitative factors",
+            "alpha factors",
+            "cross-sectional predictors",
+            "factor investing",
+            "anomalies",
+            "factor zoo",
+            "momentum factor",
+            "value factor",
+            "quality factor",
+            "high-frequency factors",
+            "machine learning factors",
+            "cryptocurrency factors",
+            "A-share factors",
         ],
     },
 
@@ -70,9 +71,10 @@ AGENT_CONFIG: Dict[str, Dict[str, Any]] = {
         "sandbox_cleanup": True,  # Cleanup sandbox after experiment
         "sandbox_base_dir": "sandbox_workspaces",  # Base directory for sandboxes
         "validation_metrics": {
-            "min_sharpe_ratio": 0.5,  # Minimum acceptable Sharpe ratio
-            "min_trades": 10,  # Minimum number of trades for statistical significance
-            "max_drawdown_threshold": 0.5,  # Maximum 50% drawdown
+            "min_ic_mean": 0.02,    # Minimum mean IC
+            "min_icir": 0.3,        # Minimum ICIR
+            "max_turnover": 0.8,    # Maximum average turnover
+            "min_coverage": 0.5,    # Minimum factor coverage
         },
     },
 

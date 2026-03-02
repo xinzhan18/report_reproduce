@@ -48,7 +48,7 @@ class BaseAgent(ABC):
         self.knowledge_graph = get_knowledge_graph()
         self.logger = self._setup_logger()
 
-        # 子类工具通过 kwargs 传入 (paper_fetcher, data_fetcher 等)
+        # 子类工具通过 kwargs 传入 (paper_fetcher, data_loader 等)
         for k, v in tools.items():
             setattr(self, k, v)
 

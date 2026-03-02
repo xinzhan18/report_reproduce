@@ -157,15 +157,15 @@ class IdeationAgent(BaseAgent):
     # ==================================================================
 
     def _build_ideation_markdown(self, results: dict, research_direction: str) -> str:
-        """构建统一的 ideation.md 文档。"""
-        parts = [f"# Literature Review: {research_direction}\n"]
+        """构建统一的 ideation.md 文档（因子研究版本）。"""
+        parts = [f"# Factor Literature Review: {research_direction}\n"]
 
         # Papers Reviewed 表格
         papers = results.get("papers_reviewed", [])
         if papers:
             parts.append("## Papers Reviewed")
-            parts.append("| # | Title | Authors | Key Findings | Relevance |")
-            parts.append("|---|-------|---------|-------------|-----------|")
+            parts.append("| # | Title | Authors | Factor / Key Findings | Relevance |")
+            parts.append("|---|-------|---------|----------------------|-----------|")
             for i, p in enumerate(papers, 1):
                 if isinstance(p, dict):
                     title = p.get("title", "N/A")
@@ -182,10 +182,10 @@ class IdeationAgent(BaseAgent):
                 parts.append(f"| {i} | {title} | {authors} | {findings} | {relevance} |")
             parts.append("")
 
-        # Key Methodologies
+        # Factor Construction Methods
         lit_summary = results.get("literature_summary", "")
         if lit_summary:
-            parts.append("## Key Methodologies")
+            parts.append("## Factor Construction Methods")
             parts.append(lit_summary)
             parts.append("")
 
@@ -201,10 +201,10 @@ class IdeationAgent(BaseAgent):
                 parts.append(f"{i}. {desc}")
             parts.append("")
 
-        # Hypothesis
+        # Factor Hypothesis
         hyp = results.get("hypothesis", {})
         if hyp:
-            parts.append("## Hypothesis")
+            parts.append("## Factor Hypothesis")
             if isinstance(hyp, dict):
                 parts.append(f"**Statement**: {hyp.get('statement', '')}")
                 parts.append(f"**Rationale**: {hyp.get('rationale', '')}")
